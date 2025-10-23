@@ -127,13 +127,26 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     });
   };
 
-  const uploadFile = async (file: File, folder: string) => {
-    const fileName = `${folder}/${Date.now()}_${file.name}`;
-    const { error } = await supabase.storage.from("uploads").upload(fileName, file);
-    if (error) throw error;
-    const { data } = supabase.storage.from("uploads").getPublicUrl(fileName);
-    return data.publicUrl;
-  };
+  // Upload any picked file (image/pdf) to the `uploads` bucket with proper headers
+const uploadFile = async (file: File, folder: string) => {
+  const fileName = `${folder}/${Date.now()}_${file.name}`;
+
+  const { error } = await supabase.storage
+    .from("uploads")
+    .upload(fileName, file, {
+      contentType: file.type || "application/octet-stream",
+      upsert: true,
+    });
+
+  if (error) {
+    console.error("uploadFile error:", error);
+    throw error;
+  }
+
+  const { data } = supabase.storage.from("uploads").getPublicUrl(fileName);
+  return data.publicUrl;
+};
+
 
   const handleFileUpload = async (e: any, field: string) => {
     const file = e.target.files?.[0];
@@ -219,15 +232,18 @@ const handleSubmit = async (e: any) => {
   try {
     console.log("[submit] start");
 
-    // 1) Generate PDF
+    // 1) Generate merged PDF
     const pdfBlob = await generatePDF();
     console.log("[submit] PDF generated", pdfBlob?.size);
 
-    // 2) Upload to Supabase Storage
+    // 2) Upload the PDF to Supabase Storage (bucket: uploads)
     const pdfFileName = `vendor_form_${Date.now()}.pdf`;
     const { error: uploadError } = await supabase.storage
       .from("uploads")
-      .upload(pdfFileName, pdfBlob, { upsert: true, contentType: "application/pdf" });
+      .upload(pdfFileName, pdfBlob, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
 
     if (uploadError) {
       console.error("[submit] uploadError", uploadError);
@@ -238,7 +254,7 @@ const handleSubmit = async (e: any) => {
     const signedUrl = pub?.publicUrl;
     console.log("[submit] publicUrl", signedUrl);
 
-    // 3) Email John via Edge Function
+    // 3) Email John via Edge Function (SendGrid)
     const subject = `ASLS Vendor Intake - ${formData.businessName || "New submission"}`;
     const html = `
       <h2>New Vendor Intake Submission</h2>
@@ -250,15 +266,19 @@ const handleSubmit = async (e: any) => {
     `;
 
     const { data: fnData, error: fnErr } = await supabase.functions.invoke("send-email", {
-      body: { subject, html, text: `PDF: ${signedUrl}\n\n${JSON.stringify(formData, null, 2)}` },
+      body: {
+        subject,
+        html,
+        text: `PDF: ${signedUrl}\n\n${JSON.stringify(formData, null, 2)}`,
+      },
     });
 
     if (fnErr) {
       console.error("[submit] send-email error", fnErr);
       throw new Error(`Email failed: ${fnErr.message || JSON.stringify(fnErr)}`);
     }
-    console.log("[submit] send-email ok", fnData);
 
+    console.log("[submit] send-email ok", fnData);
     alert("Thank you for your vendor submission. Your application has been submitted to our lender for approval.");
     onSubmit();
   } catch (err: any) {
