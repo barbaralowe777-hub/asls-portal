@@ -213,39 +213,61 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
   };
 
   // ---------- SUBMIT ----------
-  const handleSubmit = async (e: any) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const pdfBlob = await generatePDF();
-      const pdfFileName = `vendor_form_${Date.now()}.pdf`;
+const handleSubmit = async (e: any) => {
+  e.preventDefault();
+  setLoading(true);
+  try {
+    console.log("[submit] start");
 
-      const { error: uploadError } = await supabase.storage
-        .from("uploads")
-        .upload(pdfFileName, pdfBlob);
-      if (uploadError) throw uploadError;
+    // 1) Generate PDF
+    const pdfBlob = await generatePDF();
+    console.log("[submit] PDF generated", pdfBlob?.size);
 
-      const { data: pdfUrl } = supabase.storage.from("uploads").getPublicUrl(pdfFileName);
+    // 2) Upload to Supabase Storage
+    const pdfFileName = `vendor_form_${Date.now()}.pdf`;
+    const { error: uploadError } = await supabase.storage
+      .from("uploads")
+      .upload(pdfFileName, pdfBlob, { upsert: true, contentType: "application/pdf" });
 
-      await supabase.functions.invoke("send-email", {
-        body: {
-          type: "vendor_intake_submission",
-          to: "john@worldmachine.com.au",
-          applicationData: { ...formData, pdfUrl: pdfUrl.publicUrl },
-        },
-      });
-
-      alert(
-        "Thank you for your vendor submission. Your application has been submitted to our lender for approval."
-      );
-      onSubmit();
-    } catch (err) {
-      console.error(err);
-      alert("Error submitting form. Please try again.");
-    } finally {
-      setLoading(false);
+    if (uploadError) {
+      console.error("[submit] uploadError", uploadError);
+      throw new Error(`Upload failed: ${uploadError.message || uploadError}`);
     }
-  };
+
+    const { data: pub } = supabase.storage.from("uploads").getPublicUrl(pdfFileName);
+    const signedUrl = pub?.publicUrl;
+    console.log("[submit] publicUrl", signedUrl);
+
+    // 3) Email John via Edge Function
+    const subject = `ASLS Vendor Intake - ${formData.businessName || "New submission"}`;
+    const html = `
+      <h2>New Vendor Intake Submission</h2>
+      <p><strong>Business Name:</strong> ${formData.businessName || ""}</p>
+      <p><strong>ABN:</strong> ${formData.abnNumber || ""}</p>
+      <p><strong>Entity Type:</strong> ${formData.entityType || ""}</p>
+      <p><strong>Signed By:</strong> ${formData.signatureName || ""} on ${formData.signatureDate || ""}</p>
+      <p><strong>PDF:</strong> <a href="${signedUrl}" target="_blank" rel="noreferrer">${signedUrl}</a></p>
+    `;
+
+    const { data: fnData, error: fnErr } = await supabase.functions.invoke("send-email", {
+      body: { subject, html, text: `PDF: ${signedUrl}\n\n${JSON.stringify(formData, null, 2)}` },
+    });
+
+    if (fnErr) {
+      console.error("[submit] send-email error", fnErr);
+      throw new Error(`Email failed: ${fnErr.message || JSON.stringify(fnErr)}`);
+    }
+    console.log("[submit] send-email ok", fnData);
+
+    alert("Thank you for your vendor submission. Your application has been submitted to our lender for approval.");
+    onSubmit();
+  } catch (err: any) {
+    console.error("[submit] FAILED", err);
+    alert(`Error submitting form. ${err?.message || "Please try again."}`);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // ---------- FORM JSX ----------
   return (
