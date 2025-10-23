@@ -127,26 +127,13 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     });
   };
 
-  // Upload any picked file (image/pdf) to the `uploads` bucket with proper headers
-const uploadFile = async (file: File, folder: string) => {
-  const fileName = `${folder}/${Date.now()}_${file.name}`;
-
-  const { error } = await supabase.storage
-    .from("uploads")
-    .upload(fileName, file, {
-      contentType: file.type || "application/octet-stream",
-      upsert: true,
-    });
-
-  if (error) {
-    console.error("uploadFile error:", error);
-    throw error;
-  }
-
-  const { data } = supabase.storage.from("uploads").getPublicUrl(fileName);
-  return data.publicUrl;
-};
-
+  const uploadFile = async (file: File, folder: string) => {
+    const fileName = `${folder}/${Date.now()}_${file.name}`;
+    const { error } = await supabase.storage.from("uploads").upload(fileName, file);
+    if (error) throw error;
+    const { data } = supabase.storage.from("uploads").getPublicUrl(fileName);
+    return data.publicUrl;
+  };
 
   const handleFileUpload = async (e: any, field: string) => {
     const file = e.target.files?.[0];
@@ -238,7 +225,7 @@ const handleSubmit = async (e: any) => {
 
     // 2) Upload the PDF to Supabase Storage (bucket: uploads)
     const pdfFileName = `vendor_form_${Date.now()}.pdf`;
-    const { error: uploadError } = await supabase.storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from("uploads")
       .upload(pdfFileName, pdfBlob, {
         contentType: "application/pdf",
@@ -254,7 +241,7 @@ const handleSubmit = async (e: any) => {
     const signedUrl = pub?.publicUrl;
     console.log("[submit] publicUrl", signedUrl);
 
-    // 3) Email John via Edge Function (SendGrid)
+    // 3) Email John via Edge Function (SendGrid behind it)
     const subject = `ASLS Vendor Intake - ${formData.businessName || "New submission"}`;
     const html = `
       <h2>New Vendor Intake Submission</h2>
@@ -419,6 +406,32 @@ const handleSubmit = async (e: any) => {
               />
             </div>
           </div>
+            {/* NEW: Email */}
+  <div>
+    <label className="font-semibold text-gray-700">Email*</label>
+    <input
+      type="email"
+      name="email"
+      value={formData.email}
+      onChange={handleChange}
+      className="w-full border rounded-lg p-3"
+      placeholder="name@company.com"
+      required
+    />
+  </div>
+
+  {/* NEW: Website */}
+  <div>
+    <label className="font-semibold text-gray-700">Website</label>
+    <input
+      type="url"
+      name="website"
+      value={formData.website}
+      onChange={handleChange}
+      className="w-full border rounded-lg p-3"
+      placeholder="https://example.com"
+    />
+  </div>
 
           {/* Installer Certifications */}
           <div className="mt-6">
