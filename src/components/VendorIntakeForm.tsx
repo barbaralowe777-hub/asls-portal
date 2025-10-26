@@ -1,9 +1,10 @@
-import React, { useState } from "react";
-import { Loader2, ArrowLeft, Camera } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Loader2, ArrowLeft, Camera, Save } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import { PDFDocument } from "pdf-lib";
+console.log("✅ Loaded VendorIntakeForm FROM components/");
 
 interface Props {
   onBack: () => void;
@@ -12,7 +13,9 @@ interface Props {
 
 const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [abnLoading, setAbnLoading] = useState(false);
+  const [savedId, setSavedId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<any>({
     abnNumber: "",
@@ -57,10 +60,10 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
         licencePhoto: "",
       },
     ],
-    certificateFiles: [],
+    certificateFiles: "",
     bankStatement: "",
     taxInvoiceTemplate: "",
-    installerCertifications: [],
+    installerCertifications: [] as string[],
     accountName: "",
     bsb: "",
     accountNumber: "",
@@ -69,7 +72,7 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     signatureDate: "",
   });
 
-  // ---------- ABN LOOKUP ----------
+  // ---------------- ABN LOOKUP ----------------
   const handleAbnLookup = async (rawAbn: string) => {
     const abn = rawAbn.replace(/\D/g, "");
     if (!/^\d{11}$/.test(abn)) return;
@@ -109,7 +112,7 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     }
   };
 
-  // ---------- HANDLERS ----------
+  // ---------------- FORM HANDLERS ----------------
   const handleChange = (e: any) => {
     const { name, value, type, checked } = e.target;
     setFormData((prev: any) => ({
@@ -127,9 +130,16 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     });
   };
 
+  // ---------------- SUPABASE FILE UPLOAD ----------------
   const uploadFile = async (file: File, folder: string) => {
     const fileName = `${folder}/${Date.now()}_${file.name}`;
-    const { error } = await supabase.storage.from("uploads").upload(fileName, file);
+    const { error } = await supabase.storage
+      .from("uploads")
+      .upload(fileName, file, {
+        contentType: file.type || "application/octet-stream",
+        upsert: true,
+      });
+
     if (error) throw error;
     const { data } = supabase.storage.from("uploads").getPublicUrl(fileName);
     return data.publicUrl;
@@ -154,9 +164,38 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
       handleDirectorChange(dirIndex, field, url);
     } catch (err) {
       console.error("Director upload error", err);
+       }
+  }; // ---------------- SAVE FOR LATER ----------------
+  const saveFormForLater = async () => {
+    setSaving(true);
+    try {
+      if (savedId) {
+        // update existing draft
+        const { error } = await supabase
+          .from("vendor_drafts")
+          .update({ formData })
+          .eq("id", savedId);
+        if (error) throw error;
+      } else {
+        // create new draft
+        const { data, error } = await supabase
+          .from("vendor_drafts")
+          .insert([{ formData }])
+          .select("id")
+          .single();
+        if (error) throw error;
+        setSavedId(data.id);
+      }
+      alert("✅ Your progress has been saved. You can return later to complete the form.");
+    } catch (err) {
+      console.error("Save failed", err);
+      alert("❌ Error saving progress. Please try again.");
+    } finally {
+      setSaving(false);
     }
   };
-  // ---------- PDF GENERATION ----------
+
+  // ---------------- PDF GENERATION ----------------
   const generatePDF = async () => {
     const doc = new jsPDF();
     doc.setFontSize(18);
@@ -190,16 +229,16 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
 
     const mainFormPdf = doc.output("arraybuffer");
 
+    // load Terms & merge
     let termsUrl = "/terms-and-conditions.pdf";
     if (import.meta.env.MODE === "development") {
       termsUrl = `${window.location.protocol}//${window.location.host}/terms-and-conditions.pdf`;
     }
-
     const response = await fetch(termsUrl);
     if (!response.ok) throw new Error("Failed to load Terms & Conditions");
     const termsBytes = await response.arrayBuffer();
 
-    const [formDoc] = await Promise.all([PDFDocument.load(mainFormPdf)]);
+    const formDoc = await PDFDocument.load(mainFormPdf);
     const termsDoc = await PDFDocument.load(termsBytes);
     const pages = await formDoc.copyPages(termsDoc, termsDoc.getPageIndices());
     pages.forEach((p) => formDoc.addPage(p));
@@ -212,82 +251,57 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     return new Blob([mergedPdf], { type: "application/pdf" });
   };
 
-  // ---------- SUBMIT ----------
-const handleSubmit = async (e: any) => {
-  e.preventDefault();
-  setLoading(true);
-  try {
-    console.log("[submit] start");
+  // ---------------- SUBMIT FORM ----------------
+  const handleSubmit = async (e: any) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const pdfBlob = await generatePDF();
+      const pdfFileName = `vendor_form_${Date.now()}.pdf`;
 
-    // 1) Generate merged PDF
-    const pdfBlob = await generatePDF();
-    console.log("[submit] PDF generated", pdfBlob?.size);
+      const { error: uploadError } = await supabase.storage
+        .from("uploads")
+        .upload(pdfFileName, pdfBlob, {
+          contentType: "application/pdf",
+          upsert: true,
+        });
+      if (uploadError) throw uploadError;
 
-    // 2) Upload the PDF to Supabase Storage (bucket: uploads)
-    const pdfFileName = `vendor_form_${Date.now()}.pdf`;
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("uploads")
-      .upload(pdfFileName, pdfBlob, {
-        contentType: "application/pdf",
-        upsert: true,
+      const { data: pub } = supabase.storage.from("uploads").getPublicUrl(pdfFileName);
+      const pdfUrl = pub?.publicUrl;
+
+      const subject = `ASLS Vendor Intake - ${formData.businessName || "New submission"}`;
+      const html = `
+        <h2>New Vendor Intake Submission</h2>
+        <p><strong>Business Name:</strong> ${formData.businessName}</p>
+        <p><strong>ABN:</strong> ${formData.abnNumber}</p>
+        <p><strong>Entity Type:</strong> ${formData.entityType}</p>
+        <p><strong>Signed By:</strong> ${formData.signatureName} on ${formData.signatureDate}</p>
+        <p><strong>PDF:</strong> <a href="${pdfUrl}" target="_blank">${pdfUrl}</a></p>
+      `;
+
+      const { error: fnErr } = await supabase.functions.invoke("send-email", {
+        body: { subject, html, text: `PDF: ${pdfUrl}\n\n${JSON.stringify(formData, null, 2)}` },
       });
 
-    if (uploadError) {
-      console.error("[submit] uploadError", uploadError);
-      throw new Error(`Upload failed: ${uploadError.message || uploadError}`);
+      if (fnErr) throw fnErr;
+
+      alert("✅ Submission successful! Your vendor application has been emailed for review.");
+      onSubmit();
+    } catch (err: any) {
+      console.error("[submit] FAILED", err);
+      alert(`❌ Error submitting form: ${err.message || "Please try again."}`);
+    } finally {
+      setLoading(false);
     }
-
-    const { data: pub } = supabase.storage.from("uploads").getPublicUrl(pdfFileName);
-    const signedUrl = pub?.publicUrl;
-    console.log("[submit] publicUrl", signedUrl);
-
-    // 3) Email John via Edge Function (SendGrid behind it)
-    const subject = `ASLS Vendor Intake - ${formData.businessName || "New submission"}`;
-    const html = `
-      <h2>New Vendor Intake Submission</h2>
-      <p><strong>Business Name:</strong> ${formData.businessName || ""}</p>
-      <p><strong>ABN:</strong> ${formData.abnNumber || ""}</p>
-      <p><strong>Entity Type:</strong> ${formData.entityType || ""}</p>
-      <p><strong>Signed By:</strong> ${formData.signatureName || ""} on ${formData.signatureDate || ""}</p>
-      <p><strong>PDF:</strong> <a href="${signedUrl}" target="_blank" rel="noreferrer">${signedUrl}</a></p>
-    `;
-
-    const { data: fnData, error: fnErr } = await supabase.functions.invoke("send-email", {
-      body: {
-        subject,
-        html,
-        text: `PDF: ${signedUrl}\n\n${JSON.stringify(formData, null, 2)}`,
-      },
-    });
-
-    if (fnErr) {
-      console.error("[submit] send-email error", fnErr);
-      throw new Error(`Email failed: ${fnErr.message || JSON.stringify(fnErr)}`);
-    }
-
-    console.log("[submit] send-email ok", fnData);
-    alert("Thank you for your vendor submission. Your application has been submitted to our lender for approval.");
-    onSubmit();
-  } catch (err: any) {
-    console.error("[submit] FAILED", err);
-    alert(`Error submitting form. ${err?.message || "Please try again."}`);
-  } finally {
-    setLoading(false);
-  }
-};
-
-  // ---------- FORM JSX ----------
+  }; // ---------------- FORM JSX ----------------
   return (
     <div className="min-h-screen bg-gray-50 py-10">
-      <div className="max-w-5xl mx-auto bg-white shadow-xl rounded-2xl p-10 border-t-4 border-green-600">
+      <div className="max-w-5xl mx-auto bg-white shadow-xl rounded-2xl p-6 sm:p-10 border-t-4 border-green-600">
         <div className="text-center mb-8">
-          <img src="/ASLS-logo.png" alt="ASLS" className="mx-auto w-56 mb-4" />
-          <h1 className="text-4xl font-bold text-gray-800">
-            Solar Vendor Intake Form
-          </h1>
-          <p className="text-gray-500 mt-2">
-            Please complete all required details below.
-          </p>
+          <img src="/ASLS-logo.png" alt="ASLS" className="mx-auto w-40 sm:w-56 mb-4" />
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">Solar Vendor Intake Form</h1>
+          <p className="text-gray-500 mt-2">Please complete all required details below.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-10">
@@ -303,10 +317,9 @@ const handleSubmit = async (e: any) => {
                 className="w-full border rounded-lg p-3"
                 required
               />
-              {abnLoading && (
-                <p className="text-sm text-gray-500">Fetching ABN info...</p>
-              )}
+              {abnLoading && <p className="text-sm text-gray-500">Fetching ABN info...</p>}
             </div>
+
             <div>
               <label className="font-semibold text-gray-700">Business Name*</label>
               <input
@@ -335,237 +348,228 @@ const handleSubmit = async (e: any) => {
               </select>
             </div>
 
-            {(formData.entityType === "Company" ||
-              formData.entityType === "Trust") && (
+            {(formData.entityType === "Company" || formData.entityType === "Trust") && (
               <div>
-                <label className="font-semibold text-gray-700">
-                  Date of Incorporation
-                </label>
+                <label className="font-semibold text-gray-700">Date of Incorporation*</label>
                 <input
-                  type="date"
+                  type="text"
+                  placeholder="DD/MM/YYYY"
                   name="dateOfIncorporation"
                   value={formData.dateOfIncorporation}
                   onChange={handleChange}
                   className="w-full border rounded-lg p-3"
+                  required
                 />
                 <p className="text-xs text-gray-500 mt-1">Format: DD/MM/YYYY</p>
               </div>
             )}
           </div>
 
-          {/* Physical Address */}
+          {/* Address */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
             <div>
-              <label className="font-semibold text-gray-700">Street Number</label>
+              <label className="font-semibold text-gray-700">Street Number*</label>
               <input
                 type="text"
                 name="streetNumber"
                 value={formData.streetNumber}
                 onChange={handleChange}
                 className="w-full border rounded-lg p-3"
+                required
               />
             </div>
             <div>
-              <label className="font-semibold text-gray-700">Street Name</label>
+              <label className="font-semibold text-gray-700">Street Name*</label>
               <input
                 type="text"
                 name="streetName"
                 value={formData.streetName}
                 onChange={handleChange}
                 className="w-full border rounded-lg p-3"
+                required
               />
             </div>
             <div>
-              <label className="font-semibold text-gray-700">Suburb</label>
+              <label className="font-semibold text-gray-700">Suburb*</label>
               <input
                 type="text"
                 name="suburb"
                 value={formData.suburb}
                 onChange={handleChange}
                 className="w-full border rounded-lg p-3"
+                required
               />
             </div>
             <div>
-              <label className="font-semibold text-gray-700">State</label>
+              <label className="font-semibold text-gray-700">State*</label>
               <input
                 type="text"
                 name="state"
                 value={formData.state}
                 onChange={handleChange}
                 className="w-full border rounded-lg p-3"
+                required
               />
             </div>
             <div>
-              <label className="font-semibold text-gray-700">Postcode</label>
+              <label className="font-semibold text-gray-700">Postcode*</label>
               <input
                 type="text"
                 name="postcode"
                 value={formData.postcode}
                 onChange={handleChange}
                 className="w-full border rounded-lg p-3"
+                required
               />
             </div>
           </div>
-            {/* NEW: Email */}
-  <div>
-    <label className="font-semibold text-gray-700">Email*</label>
-    <input
-      type="email"
-      name="email"
-      value={formData.email}
-      onChange={handleChange}
-      className="w-full border rounded-lg p-3"
-      placeholder="name@company.com"
-      required
-    />
-  </div>
 
-  {/* NEW: Website */}
-  <div>
-    <label className="font-semibold text-gray-700">Website</label>
-    <input
-      type="url"
-      name="website"
-      value={formData.website}
-      onChange={handleChange}
-      className="w-full border rounded-lg p-3"
-      placeholder="https://example.com"
-    />
-  </div>
+          {/* Contact */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div>
+              <label className="font-semibold text-gray-700">Email*</label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                className="w-full border rounded-lg p-3"
+                required
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-gray-700">Website*</label>
+              <input
+                type="url"
+                name="website"
+                value={formData.website}
+                onChange={handleChange}
+                className="w-full border rounded-lg p-3"
+                required
+              />
+            </div>
+          </div>
 
           {/* Installer Certifications */}
           <div className="mt-6">
             <label className="font-semibold text-gray-700">
-              Installer Certifications (Select all that apply)
+              Installer Certifications (Select at least one)*
             </label>
             <div className="flex flex-wrap gap-4 mt-3">
-              {[
-                "NETCC Certified Installer",
-                "CEC Certified Installer",
-                "CAA Certified Installer",
-              ].map((cert) => (
-                <label key={cert} className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    value={cert}
-                    checked={formData.installerCertifications.includes(cert)}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setFormData((prev: any) => {
-                        const current = prev.installerCertifications.includes(value)
-                          ? prev.installerCertifications.filter((c: string) => c !== value)
-                          : [...prev.installerCertifications, value];
-                        return { ...prev, installerCertifications: current };
-                      });
-                    }}
-                    className="accent-green-700"
-                  />
-                  <span className="text-gray-700">{cert}</span>
-                </label>
-              ))}
+              {["NETCC Certified Installer", "CEC Certified Installer", "CAA Certified Installer"].map(
+                (cert) => (
+                  <label key={cert} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      value={cert}
+                      checked={formData.installerCertifications.includes(cert)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setFormData((prev: any) => {
+                          const current = prev.installerCertifications.includes(value)
+                            ? prev.installerCertifications.filter((c: string) => c !== value)
+                            : [...prev.installerCertifications, value];
+                          return { ...prev, installerCertifications: current };
+                        });
+                      }}
+                      className="accent-green-700"
+                    />
+                    <span className="text-gray-700">{cert}</span>
+                  </label>
+                )
+              )}
             </div>
           </div>
-          {/* Directors Section */}
-          {formData.directors.map((d: any) => (
-            <div
-              key={d.index}
-              className="border border-gray-200 rounded-xl p-6 shadow-sm bg-green-50"
-            >
-              <h3 className="font-bold text-lg mb-4 text-green-800">
-                Director {d.index}
-              </h3>
 
+          {/* Directors */}
+          {formData.directors.map((d: any) => (
+            <div key={d.index} className="border border-gray-200 rounded-xl p-6 shadow-sm bg-green-50">
+              <h3 className="font-bold text-lg mb-4 text-green-800">Director {d.index}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <input
                   placeholder="First Name"
                   value={d.firstName}
-                  onChange={(e) =>
-                    handleDirectorChange(d.index, "firstName", e.target.value)
-                  }
+                  onChange={(e) => handleDirectorChange(d.index, "firstName", e.target.value)}
                   className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  required
                 />
                 <input
                   placeholder="Middle Name"
                   value={d.middleName}
-                  onChange={(e) =>
-                    handleDirectorChange(d.index, "middleName", e.target.value)
-                  }
+                  onChange={(e) => handleDirectorChange(d.index, "middleName", e.target.value)}
                   className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 />
                 <input
                   placeholder="Surname"
                   value={d.surname}
-                  onChange={(e) =>
-                    handleDirectorChange(d.index, "surname", e.target.value)
-                  }
+                  onChange={(e) => handleDirectorChange(d.index, "surname", e.target.value)}
                   className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  required
                 />
-                <input
-                  type="date"
-                  placeholder="Date of Birth"
-                  value={d.dob}
-                  onChange={(e) =>
-                    handleDirectorChange(d.index, "dob", e.target.value)
-                  }
-                  className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                />
+                <div className="col-span-1 sm:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Date of Birth*
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="DD/MM/YYYY"
+                    name={`dob_${d.index}`}
+                    value={d.dob}
+                    onChange={(e) => handleDirectorChange(d.index, "dob", e.target.value)}
+                    className="w-full border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Format: DD/MM/YYYY</p>
+                </div>
                 <input
                   placeholder="Residential Address"
                   value={d.address}
-                  onChange={(e) =>
-                    handleDirectorChange(d.index, "address", e.target.value)
-                  }
-                  className="col-span-2 border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  onChange={(e) => handleDirectorChange(d.index, "address", e.target.value)}
+                  className="col-span-1 sm:col-span-2 border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  required
                 />
                 <input
                   placeholder="Licence Number"
                   value={d.licenceNumber}
-                  onChange={(e) =>
-                    handleDirectorChange(d.index, "licenceNumber", e.target.value)
-                  }
+                  onChange={(e) => handleDirectorChange(d.index, "licenceNumber", e.target.value)}
                   className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  required
                 />
                 <input
                   placeholder="Licence State (e.g. NSW, VIC)"
                   value={d.licenceState}
-                  onChange={(e) =>
-                    handleDirectorChange(d.index, "licenceState", e.target.value)
-                  }
+                  onChange={(e) => handleDirectorChange(d.index, "licenceState", e.target.value)}
                   className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                />
-
-                {/* Licence Expiry Date */}
-<div>
-  <label className="block text-sm font-semibold text-gray-700 mb-1">
-    Licence Expiry Date (DD/MM/YYYY)
-  </label>
-  <input
-    type="date"
-    value={d.licenceExpiry}
-    onChange={(e) =>
-      handleDirectorChange(d.index, "licenceExpiry", e.target.value)
-    }
-    className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-  />
-  <p className="text-xs text-gray-500 mt-1">Format: DD/MM/YYYY</p>
-</div>
-
+                  required
+                /><div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Licence Expiry Date*
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="DD/MM/YYYY"
+                    value={d.licenceExpiry}
+                    onChange={(e) => handleDirectorChange(d.index, "licenceExpiry", e.target.value)}
+                    className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Format: DD/MM/YYYY</p>
+                </div>
               </div>
 
               {/* File Uploads */}
               <div className="mt-5 space-y-3">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Upload Driver’s Licence (Front)
+                    Upload Driver’s Licence (Front)*
                   </label>
                   <div className="flex items-center gap-3">
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={(e) =>
-                        handleDirectorFileUpload(e, d.index, "licenceFront")
-                      }
+                      onChange={(e) => handleDirectorFileUpload(e, d.index, "licenceFront")}
                       className="w-full border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-green-500"
+                      required
                     />
                     <Camera className="w-5 h-5 text-green-600" />
                   </div>
@@ -580,9 +584,7 @@ const handleSubmit = async (e: any) => {
                       type="file"
                       accept="image/*"
                       capture="environment"
-                      onChange={(e) =>
-                        handleDirectorFileUpload(e, d.index, "licencePhoto")
-                      }
+                      onChange={(e) => handleDirectorFileUpload(e, d.index, "licencePhoto")}
                       className="w-full border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-green-500"
                     />
                     <Camera className="w-5 h-5 text-green-600" />
@@ -597,23 +599,19 @@ const handleSubmit = async (e: any) => {
             <h3 className="text-lg font-bold text-green-800">Supporting Documents</h3>
 
             {[
-              {
-                label: "Certificate of Business Registration / Trust Deeds (if applicable)",
-                field: "certificateFiles",
-              },
-              { label: "Bank Statement Header", field: "bankStatement" },
-              { label: "Tax Invoice Template", field: "taxInvoiceTemplate" },
+              { label: "Certificate of Business Registration / Trust Deeds*", field: "certificateFiles" },
+              { label: "Bank Statement Header*", field: "bankStatement" },
+              { label: "Tax Invoice Template*", field: "taxInvoiceTemplate" },
             ].map(({ label, field }) => (
               <div key={field}>
-                <label className="block font-semibold text-gray-700 mb-1">
-                  {label}
-                </label>
+                <label className="block font-semibold text-gray-700 mb-1">{label}</label>
                 <div className="flex items-center gap-3">
                   <input
                     type="file"
                     accept="image/*,application/pdf"
                     onChange={(e) => handleFileUpload(e, field)}
                     className="w-full border-gray-300 rounded-lg p-2"
+                    required
                   />
                   <Camera className="w-5 h-5 text-green-600" />
                 </div>
@@ -653,14 +651,10 @@ const handleSubmit = async (e: any) => {
 
           {/* Banking Details */}
           <div>
-            <h3 className="text-lg font-bold text-green-800 mb-3">
-              Banking Details for Invoice Payments
-            </h3>
+            <h3 className="text-lg font-bold text-green-800 mb-3">Banking Details for Invoice Payments</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block font-semibold text-gray-700 mb-1">
-                  Account Name
-                </label>
+                <label className="block font-semibold text-gray-700 mb-1">Account Name*</label>
                 <input
                   type="text"
                   name="accountName"
@@ -671,7 +665,7 @@ const handleSubmit = async (e: any) => {
                 />
               </div>
               <div>
-                <label className="block font-semibold text-gray-700 mb-1">BSB</label>
+                <label className="block font-semibold text-gray-700 mb-1">BSB*</label>
                 <input
                   type="text"
                   name="bsb"
@@ -682,9 +676,7 @@ const handleSubmit = async (e: any) => {
                 />
               </div>
               <div>
-                <label className="block font-semibold text-gray-700 mb-1">
-                  Account Number
-                </label>
+                <label className="block font-semibold text-gray-700 mb-1">Account Number*</label>
                 <input
                   type="text"
                   name="accountNumber"
@@ -699,9 +691,7 @@ const handleSubmit = async (e: any) => {
 
           {/* Terms & Conditions */}
           <div className="border-t pt-8 mt-10">
-            <h3 className="text-lg font-bold text-green-800 mb-2">
-              Terms & Conditions
-            </h3>
+            <h3 className="text-lg font-bold text-green-800 mb-2">Terms & Conditions</h3>
             <p className="text-sm text-gray-600 mb-3">
               Please review the{" "}
               <a
@@ -725,14 +715,14 @@ const handleSubmit = async (e: any) => {
                 className="mt-1 accent-green-700"
               />
               <span className="text-gray-700">
-                I have read and agree to the Grenke/ASLS Terms and Conditions.
+                I have read and agree to the Grenke/ASLS Terms and Conditions.*
               </span>
             </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Signature (Full Name)
+                  Signature (Full Name)*
                 </label>
                 <input
                   type="text"
@@ -745,12 +735,11 @@ const handleSubmit = async (e: any) => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Date Signed
-                </label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Date Signed*</label>
                 <input
-                  type="date"
+                  type="text"
                   name="signatureDate"
+                  placeholder="DD/MM/YYYY"
                   value={formData.signatureDate}
                   onChange={handleChange}
                   className="w-full border rounded-lg p-3"
@@ -762,7 +751,7 @@ const handleSubmit = async (e: any) => {
           </div>
 
           {/* Buttons */}
-          <div className="flex justify-between pt-8 mt-6 border-t">
+          <div className="flex flex-col sm:flex-row gap-3 sm:justify-between pt-8 mt-6 border-t">
             <button
               type="button"
               onClick={onBack}
@@ -770,19 +759,38 @@ const handleSubmit = async (e: any) => {
             >
               <ArrowLeft className="w-5 h-5" /> Back
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-8 py-3 bg-green-700 text-white font-semibold rounded-lg hover:bg-green-800 transition disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="inline w-5 h-5 animate-spin mr-2" /> Submitting...
-                </>
-              ) : (
-                "Submit Application"
-              )}
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={saveFormForLater}
+                disabled={saving}
+                className="px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 transition disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-5 h-5" /> Save for Later
+                  </>
+                )}
+              </button>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-8 py-3 bg-green-700 text-white font-semibold rounded-lg hover:bg-green-800 transition disabled:opacity-50"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="inline w-5 h-5 animate-spin mr-2" /> Submitting...
+                  </>
+                ) : (
+                  "Submit Application"
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>
