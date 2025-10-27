@@ -2,11 +2,6 @@
   "buildCommand": "npm run build",
   "installCommand": "npm install",
   "framework": "vite",
-  "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs20.x@latest"
-    }
-  },
   "env": {
     "NODE_VERSION": "20"
   }
