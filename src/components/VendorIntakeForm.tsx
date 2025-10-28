@@ -1,9 +1,17 @@
+// -----------------------------------------------
+// ASLS Vendor Intake Form
+// Version: Production (Final)
+// Includes ABN Lookup, Save-for-Later, PDF generation, Responsive Layout
+// -----------------------------------------------
+
 import React, { useState, useEffect } from "react";
 import { Loader2, ArrowLeft, Camera, Save } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import { PDFDocument } from "pdf-lib";
+import { useSearchParams } from "react-router-dom";
+
 console.log("✅ Loaded VendorIntakeForm FROM components/");
 
 interface Props {
@@ -12,10 +20,12 @@ interface Props {
 }
 
 const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
+  // -------------------- STATE SETUP --------------------
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [abnLoading, setAbnLoading] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [directorCount, setDirectorCount] = useState(1); // 👈 Dynamic number of directors (1 or 2)
 
   const [formData, setFormData] = useState<any>({
     abnNumber: "",
@@ -72,10 +82,39 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     signatureDate: "",
   });
 
-  // ---------------- ABN LOOKUP ----------------
+  const [searchParams] = useSearchParams();
+  const draftId = searchParams.get("id");
+
+  // -------------------- LOAD EXISTING DRAFT --------------------
+  useEffect(() => {
+    const loadDraft = async () => {
+      if (!draftId) return;
+      const { data, error } = await supabase
+        .from("vendor_drafts")
+        .select("formData")
+        .eq("id", draftId)
+        .single();
+
+      if (error) {
+        console.error("❌ Failed to load draft", error);
+        return;
+      }
+
+      if (data?.formData) {
+        setFormData(data.formData);
+        setSavedId(draftId);
+        console.log("✅ Draft loaded successfully");
+      }
+    };
+
+    loadDraft();
+  }, [draftId]);
+
+  // -------------------- ABN LOOKUP --------------------
   const handleAbnLookup = async (rawAbn: string) => {
     const abn = rawAbn.replace(/\D/g, "");
     if (!/^\d{11}$/.test(abn)) return;
+
     setAbnLoading(true);
     try {
       const response = await fetch(
@@ -112,7 +151,7 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     }
   };
 
-  // ---------------- FORM HANDLERS ----------------
+  // -------------------- FORM HANDLERS --------------------
   const handleChange = (e: any) => {
     const { name, value, type, checked } = e.target;
     setFormData((prev: any) => ({
@@ -130,7 +169,7 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     });
   };
 
-  // ---------------- SUPABASE FILE UPLOAD ----------------
+  // -------------------- SUPABASE FILE UPLOAD --------------------
   const uploadFile = async (file: File, folder: string) => {
     const fileName = `${folder}/${Date.now()}_${file.name}`;
     const { error } = await supabase.storage
@@ -145,6 +184,7 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     return data.publicUrl;
   };
 
+  // Choose file OR take photo on mobile
   const handleFileUpload = async (e: any, field: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -164,29 +204,53 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
       handleDirectorChange(dirIndex, field, url);
     } catch (err) {
       console.error("Director upload error", err);
-       }
-  }; // ---------------- SAVE FOR LATER ----------------
+    }
+  };
+  // -------------------- SAVE FOR LATER --------------------
   const saveFormForLater = async () => {
     setSaving(true);
     try {
-      if (savedId) {
-        // update existing draft
+      let draftId = savedId;
+
+      // 🟢 1️⃣ Insert or update draft in Supabase
+      if (draftId) {
         const { error } = await supabase
           .from("vendor_drafts")
           .update({ formData })
-          .eq("id", savedId);
+          .eq("id", draftId);
         if (error) throw error;
       } else {
-        // create new draft
         const { data, error } = await supabase
           .from("vendor_drafts")
           .insert([{ formData }])
           .select("id")
           .single();
         if (error) throw error;
-        setSavedId(data.id);
+        draftId = data.id;
+        setSavedId(draftId);
       }
-      alert("✅ Your progress has been saved. You can return later to complete the form.");
+
+      // 🟢 2️⃣ Generate a resume link
+      const resumeLink = `${window.location.origin}/vendor-intake?id=${draftId}`;
+
+      // 🟢 3️⃣ Send the resume link to the vendor’s email
+      const emailTo = formData.email || "";
+      if (emailTo) {
+        const subject = "Your saved ASLS Vendor Intake Form";
+        const html = `
+          <p>Hi ${formData.businessName || "there"},</p>
+          <p>We've saved your vendor intake form. You can return anytime using the link below:</p>
+          <p><a href="${resumeLink}" target="_blank">${resumeLink}</a></p>
+          <p>Kind regards,<br>Australian Solar Lending Solutions</p>
+        `;
+
+        const { error: emailError } = await supabase.functions.invoke("send-email", {
+          body: { to: emailTo, subject, html },
+        });
+        if (emailError) throw emailError;
+      }
+
+      alert("✅ Your progress has been saved! A return link has been sent to your email.");
     } catch (err) {
       console.error("Save failed", err);
       alert("❌ Error saving progress. Please try again.");
@@ -195,13 +259,14 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     }
   };
 
-  // ---------------- PDF GENERATION ----------------
+  // -------------------- PDF GENERATION --------------------
   const generatePDF = async () => {
     const doc = new jsPDF();
     doc.setFontSize(18);
     doc.text("ASLS Vendor Intake Form", 14, 20);
     doc.setFontSize(12);
 
+    // 🧾 Basic business info
     doc.text(`Business Name: ${formData.businessName}`, 14, 35);
     doc.text(`ABN: ${formData.abnNumber}`, 14, 43);
     doc.text(`Entity Type: ${formData.entityType}`, 14, 51);
@@ -215,7 +280,9 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     let y = 80;
     doc.text("Directors:", 14, y);
     y += 8;
-    formData.directors.forEach((d: any, i: number) => {
+
+    // 🧍 Directors
+    formData.directors.slice(0, directorCount).forEach((d: any, i: number) => {
       doc.text(`Director ${i + 1}: ${d.firstName} ${d.middleName} ${d.surname}`, 14, y);
       y += 8;
       doc.text(`DOB: ${d.dob} | Licence: ${d.licenceNumber} (${d.licenceState})`, 14, y);
@@ -227,13 +294,15 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     doc.text(`Account Name: ${formData.accountName}`, 14, y + 5);
     doc.text(`BSB: ${formData.bsb} | Account Number: ${formData.accountNumber}`, 14, y + 13);
 
+    // 🧩 Export this as a PDF array buffer
     const mainFormPdf = doc.output("arraybuffer");
 
-    // load Terms & merge
+    // 🧾 Merge Terms & Conditions
     let termsUrl = "/terms-and-conditions.pdf";
     if (import.meta.env.MODE === "development") {
       termsUrl = `${window.location.protocol}//${window.location.host}/terms-and-conditions.pdf`;
     }
+
     const response = await fetch(termsUrl);
     if (!response.ok) throw new Error("Failed to load Terms & Conditions");
     const termsBytes = await response.arrayBuffer();
@@ -243,6 +312,7 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     const pages = await formDoc.copyPages(termsDoc, termsDoc.getPageIndices());
     pages.forEach((p) => formDoc.addPage(p));
 
+    // ✍️ Add signature on the last page
     const lastPage = formDoc.getPage(formDoc.getPageCount() - 1);
     lastPage.drawText(`Signed by: ${formData.signatureName}`, { x: 50, y: 60, size: 12 });
     lastPage.drawText(`Date: ${formData.signatureDate}`, { x: 50, y: 45, size: 12 });
@@ -251,14 +321,16 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     return new Blob([mergedPdf], { type: "application/pdf" });
   };
 
-  // ---------------- SUBMIT FORM ----------------
+  // -------------------- SUBMIT FORM --------------------
   const handleSubmit = async (e: any) => {
     e.preventDefault();
     setLoading(true);
     try {
+      // 1️⃣ Generate PDF
       const pdfBlob = await generatePDF();
       const pdfFileName = `vendor_form_${Date.now()}.pdf`;
 
+      // 2️⃣ Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from("uploads")
         .upload(pdfFileName, pdfBlob, {
@@ -270,6 +342,7 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
       const { data: pub } = supabase.storage.from("uploads").getPublicUrl(pdfFileName);
       const pdfUrl = pub?.publicUrl;
 
+      // 3️⃣ Send email to admin(s)
       const subject = `ASLS Vendor Intake - ${formData.businessName || "New submission"}`;
       const html = `
         <h2>New Vendor Intake Submission</h2>
@@ -280,8 +353,14 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
         <p><strong>PDF:</strong> <a href="${pdfUrl}" target="_blank">${pdfUrl}</a></p>
       `;
 
+      // Send to both admin addresses
       const { error: fnErr } = await supabase.functions.invoke("send-email", {
-        body: { subject, html, text: `PDF: ${pdfUrl}\n\n${JSON.stringify(formData, null, 2)}` },
+        body: {
+          to: ["john@worldmachine.com.au", "admin@asls.net.au"],
+          subject,
+          html,
+          text: `PDF: ${pdfUrl}\n\n${JSON.stringify(formData, null, 2)}`,
+        },
       });
 
       if (fnErr) throw fnErr;
@@ -294,18 +373,47 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     } finally {
       setLoading(false);
     }
-  }; // ---------------- FORM JSX ----------------
+  };
+  // -------------------- FORM JSX --------------------
   return (
-    <div className="min-h-screen bg-gray-50 py-10">
+    <div className="min-h-screen bg-gray-50 py-10 px-3 sm:px-6">
       <div className="max-w-5xl mx-auto bg-white shadow-xl rounded-2xl p-6 sm:p-10 border-t-4 border-green-600">
+        {/* Header with Logo */}
         <div className="text-center mb-8">
-          <img src="/ASLS-logo.png" alt="ASLS" className="mx-auto w-40 sm:w-56 mb-4" />
-          <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">Solar Vendor Intake Form</h1>
-          <p className="text-gray-500 mt-2">Please complete all required details below.</p>
+          <img
+            src="/ASLS-logo.png"
+            alt="ASLS"
+            className="mx-auto w-40 sm:w-56 mb-4"
+          />
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">
+            Solar Vendor Intake Form
+          </h1>
+          <p className="text-gray-500 mt-2">
+            Please complete all required details below.
+          </p>
         </div>
 
+        {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-10">
-          {/* Business Details */}
+
+          {/* 🧍 Number of Directors Dropdown */}
+          <div>
+            <label className="font-semibold text-gray-700">
+              Number of Directors*
+            </label>
+            <select
+              name="directorCount"
+              value={directorCount}
+              onChange={(e) => setDirectorCount(parseInt(e.target.value))}
+              className="w-full border rounded-lg p-3 mt-2"
+              required
+            >
+              <option value={1}>1 Director</option>
+              <option value={2}>2 Directors</option>
+            </select>
+          </div>
+
+          {/* 🧾 Business Details */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <label className="font-semibold text-gray-700">ABN Number*</label>
@@ -317,11 +425,15 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
                 className="w-full border rounded-lg p-3"
                 required
               />
-              {abnLoading && <p className="text-sm text-gray-500">Fetching ABN info...</p>}
+              {abnLoading && (
+                <p className="text-sm text-gray-500">Fetching ABN info...</p>
+              )}
             </div>
 
             <div>
-              <label className="font-semibold text-gray-700">Business Name*</label>
+              <label className="font-semibold text-gray-700">
+                Business Name*
+              </label>
               <input
                 type="text"
                 name="businessName"
@@ -348,9 +460,12 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
               </select>
             </div>
 
-            {(formData.entityType === "Company" || formData.entityType === "Trust") && (
+            {(formData.entityType === "Company" ||
+              formData.entityType === "Trust") && (
               <div>
-                <label className="font-semibold text-gray-700">Date of Incorporation*</label>
+                <label className="font-semibold text-gray-700">
+                  Date of Incorporation*
+                </label>
                 <input
                   type="text"
                   placeholder="DD/MM/YYYY"
@@ -360,71 +475,32 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
                   className="w-full border rounded-lg p-3"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">Format: DD/MM/YYYY</p>
               </div>
             )}
           </div>
 
-          {/* Address */}
+          {/* 🏠 Address */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
-            <div>
-              <label className="font-semibold text-gray-700">Street Number*</label>
-              <input
-                type="text"
-                name="streetNumber"
-                value={formData.streetNumber}
-                onChange={handleChange}
-                className="w-full border rounded-lg p-3"
-                required
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-gray-700">Street Name*</label>
-              <input
-                type="text"
-                name="streetName"
-                value={formData.streetName}
-                onChange={handleChange}
-                className="w-full border rounded-lg p-3"
-                required
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-gray-700">Suburb*</label>
-              <input
-                type="text"
-                name="suburb"
-                value={formData.suburb}
-                onChange={handleChange}
-                className="w-full border rounded-lg p-3"
-                required
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-gray-700">State*</label>
-              <input
-                type="text"
-                name="state"
-                value={formData.state}
-                onChange={handleChange}
-                className="w-full border rounded-lg p-3"
-                required
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-gray-700">Postcode*</label>
-              <input
-                type="text"
-                name="postcode"
-                value={formData.postcode}
-                onChange={handleChange}
-                className="w-full border rounded-lg p-3"
-                required
-              />
-            </div>
+            {["streetNumber", "streetName", "suburb", "state", "postcode"].map(
+              (field) => (
+                <div key={field}>
+                  <label className="font-semibold text-gray-700 capitalize">
+                    {field.replace(/([A-Z])/g, " $1")}*
+                  </label>
+                  <input
+                    type="text"
+                    name={field}
+                    value={formData[field]}
+                    onChange={handleChange}
+                    className="w-full border rounded-lg p-3"
+                    required
+                  />
+                </div>
+              )
+            )}
           </div>
 
-          {/* Contact */}
+          {/* 📞 Contact */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <label className="font-semibold text-gray-700">Email*</label>
@@ -450,156 +526,201 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
             </div>
           </div>
 
-          {/* Installer Certifications */}
+          {/* 👷 Installer Certifications */}
           <div className="mt-6">
             <label className="font-semibold text-gray-700">
               Installer Certifications (Select at least one)*
             </label>
             <div className="flex flex-wrap gap-4 mt-3">
-              {["NETCC Certified Installer", "CEC Certified Installer", "CAA Certified Installer"].map(
-                (cert) => (
-                  <label key={cert} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      value={cert}
-                      checked={formData.installerCertifications.includes(cert)}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setFormData((prev: any) => {
-                          const current = prev.installerCertifications.includes(value)
-                            ? prev.installerCertifications.filter((c: string) => c !== value)
-                            : [...prev.installerCertifications, value];
-                          return { ...prev, installerCertifications: current };
-                        });
-                      }}
-                      className="accent-green-700"
-                    />
-                    <span className="text-gray-700">{cert}</span>
-                  </label>
-                )
-              )}
+              {[
+                "NETCC Certified Installer",
+                "CEC Certified Installer",
+                "CAA Certified Installer",
+              ].map((cert) => (
+                <label key={cert} className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    value={cert}
+                    checked={formData.installerCertifications.includes(cert)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData((prev: any) => {
+                        const current = prev.installerCertifications.includes(
+                          value
+                        )
+                          ? prev.installerCertifications.filter(
+                              (c: string) => c !== value
+                            )
+                          : [...prev.installerCertifications, value];
+                        return {
+                          ...prev,
+                          installerCertifications: current,
+                        };
+                      });
+                    }}
+                    className="accent-green-700"
+                  />
+                  <span className="text-gray-700">{cert}</span>
+                </label>
+              ))}
             </div>
           </div>
 
-          {/* Directors */}
-          {formData.directors.map((d: any) => (
-            <div key={d.index} className="border border-gray-200 rounded-xl p-6 shadow-sm bg-green-50">
-              <h3 className="font-bold text-lg mb-4 text-green-800">Director {d.index}</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <input
-                  placeholder="First Name"
-                  value={d.firstName}
-                  onChange={(e) => handleDirectorChange(d.index, "firstName", e.target.value)}
-                  className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  required
-                />
-                <input
-                  placeholder="Middle Name"
-                  value={d.middleName}
-                  onChange={(e) => handleDirectorChange(d.index, "middleName", e.target.value)}
-                  className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                />
-                <input
-                  placeholder="Surname"
-                  value={d.surname}
-                  onChange={(e) => handleDirectorChange(d.index, "surname", e.target.value)}
-                  className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  required
-                />
-                <div className="col-span-1 sm:col-span-2">
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Date of Birth*
-                  </label>
+          {/* 🧍 Directors */}
+          {formData.directors
+            .slice(0, directorCount)
+            .map((d: any) => (
+              <div
+                key={d.index}
+                className="border border-gray-200 rounded-xl p-6 shadow-sm bg-green-50"
+              >
+                <h3 className="font-bold text-lg mb-4 text-green-800">
+                  Director {d.index}
+                </h3>
+
+                {/* Director Details */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <input
-                    type="text"
-                    placeholder="DD/MM/YYYY"
-                    name={`dob_${d.index}`}
-                    value={d.dob}
-                    onChange={(e) => handleDirectorChange(d.index, "dob", e.target.value)}
-                    className="w-full border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    required
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Format: DD/MM/YYYY</p>
-                </div>
-                <input
-                  placeholder="Residential Address"
-                  value={d.address}
-                  onChange={(e) => handleDirectorChange(d.index, "address", e.target.value)}
-                  className="col-span-1 sm:col-span-2 border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  required
-                />
-                <input
-                  placeholder="Licence Number"
-                  value={d.licenceNumber}
-                  onChange={(e) => handleDirectorChange(d.index, "licenceNumber", e.target.value)}
-                  className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  required
-                />
-                <input
-                  placeholder="Licence State (e.g. NSW, VIC)"
-                  value={d.licenceState}
-                  onChange={(e) => handleDirectorChange(d.index, "licenceState", e.target.value)}
-                  className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  required
-                /><div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Licence Expiry Date*
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="DD/MM/YYYY"
-                    value={d.licenceExpiry}
-                    onChange={(e) => handleDirectorChange(d.index, "licenceExpiry", e.target.value)}
+                    placeholder="First Name"
+                    value={d.firstName}
+                    onChange={(e) =>
+                      handleDirectorChange(d.index, "firstName", e.target.value)
+                    }
                     className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                     required
                   />
-                  <p className="text-xs text-gray-500 mt-1">Format: DD/MM/YYYY</p>
-                </div>
-              </div>
-
-              {/* File Uploads */}
-              <div className="mt-5 space-y-3">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Upload Driver’s Licence (Front)*
-                  </label>
-                  <div className="flex items-center gap-3">
+                  <input
+                    placeholder="Middle Name"
+                    value={d.middleName}
+                    onChange={(e) =>
+                      handleDirectorChange(d.index, "middleName", e.target.value)
+                    }
+                    className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                  <input
+                    placeholder="Surname"
+                    value={d.surname}
+                    onChange={(e) =>
+                      handleDirectorChange(d.index, "surname", e.target.value)
+                    }
+                    className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    required
+                  />
+                  {/* Date of Birth */}
+                  <div className="col-span-1 sm:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Date of Birth*
+                    </label>
                     <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => handleDirectorFileUpload(e, d.index, "licenceFront")}
-                      className="w-full border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-green-500"
+                      type="text"
+                      placeholder="DD/MM/YYYY"
+                      value={d.dob}
+                      onChange={(e) =>
+                        handleDirectorChange(d.index, "dob", e.target.value)
+                      }
+                      className="w-full border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                       required
                     />
-                    <Camera className="w-5 h-5 text-green-600" />
+                  </div>
+
+                  {/* Address */}
+                  <input
+                    placeholder="Residential Address"
+                    value={d.address}
+                    onChange={(e) =>
+                      handleDirectorChange(d.index, "address", e.target.value)
+                    }
+                    className="col-span-1 sm:col-span-2 border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    required
+                  />
+
+                  {/* Licence details */}
+                  <input
+                    placeholder="Licence Number"
+                    value={d.licenceNumber}
+                    onChange={(e) =>
+                      handleDirectorChange(d.index, "licenceNumber", e.target.value)
+                    }
+                    className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    required
+                  />
+                  <input
+                    placeholder="Licence State (e.g. NSW, VIC)"
+                    value={d.licenceState}
+                    onChange={(e) =>
+                      handleDirectorChange(d.index, "licenceState", e.target.value)
+                    }
+                    className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    required
+                  />
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Licence Expiry Date*
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="DD/MM/YYYY"
+                      value={d.licenceExpiry}
+                      onChange={(e) =>
+                        handleDirectorChange(d.index, "licenceExpiry", e.target.value)
+                      }
+                      className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      required
+                    />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Capture Photo (optional)
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => handleDirectorFileUpload(e, d.index, "licencePhoto")}
-                      className="w-full border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-green-500"
-                    />
-                    <Camera className="w-5 h-5 text-green-600" />
+                {/* 📸 Uploads for Licence Front + Back */}
+                <div className="mt-5 space-y-3">
+                  {/* Front */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Driver’s Licence (Front)*
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) =>
+                          handleDirectorFileUpload(e, d.index, "licenceFront")
+                        }
+                        className="w-full border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-green-500"
+                        required
+                      />
+                      <Camera className="w-5 h-5 text-green-600" />
+                    </div>
+                  </div>
+
+                  {/* Back */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Driver’s Licence (Back)*
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) =>
+                          handleDirectorFileUpload(e, d.index, "licencePhoto")
+                        }
+                        className="w-full border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-green-500"
+                        required
+                      />
+                      <Camera className="w-5 h-5 text-green-600" />
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
 
-          {/* Supporting Documents */}
+          {/* 📎 Supporting Documents */}
           <div className="space-y-4">
             <h3 className="text-lg font-bold text-green-800">Supporting Documents</h3>
-
             {[
-              { label: "Certificate of Business Registration / Trust Deeds*", field: "certificateFiles" },
+              {
+                label: "Certificate of Business Registration / Trust Deeds*",
+                field: "certificateFiles",
+              },
               { label: "Bank Statement Header*", field: "bankStatement" },
               { label: "Tax Invoice Template*", field: "taxInvoiceTemplate" },
             ].map(({ label, field }) => (
@@ -619,79 +740,39 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
             ))}
           </div>
 
-          {/* Solar Equipment */}
+          {/* 💳 Banking Details */}
           <div>
-            <h3 className="text-lg font-bold text-green-800 mb-2">
-              Solar Equipment & Supplies (Brand Partnerships)
+            <h3 className="text-lg font-bold text-green-800 mb-3">
+              Banking Details for Invoice Payments
             </h3>
-            <p className="text-sm text-gray-600 mb-3">
-              Please select all applicable brands your business currently supplies or installs.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
-                { label: "Panels", options: ["Jinko", "Trina", "REC", "Canadian Solar", "Longi", "Other"] },
-                { label: "Inverters", options: ["Fronius", "Sungrow", "Huawei", "Solaredge", "GoodWe", "Other"] },
-                { label: "Batteries", options: ["Tesla", "BYD", "Alpha ESS", "Sonnen", "Enphase", "Other"] },
-              ].map(({ label, options }) => (
-                <div key={label} className="border rounded-lg p-4 bg-gray-50 shadow-sm">
-                  <h4 className="font-semibold mb-2 text-gray-700">{label}</h4>
-                  <div className="space-y-1">
-                    {options.map((opt) => (
-                      <label key={opt} className="flex items-center space-x-2 text-sm">
-                        <input type="checkbox" className="accent-green-700" />
-                        <span>{opt}</span>
-                      </label>
-                    ))}
-                  </div>
+                { name: "accountName", label: "Account Name*" },
+                { name: "bsb", label: "BSB*" },
+                { name: "accountNumber", label: "Account Number*" },
+              ].map(({ name, label }) => (
+                <div key={name}>
+                  <label className="block font-semibold text-gray-700 mb-1">
+                    {label}
+                  </label>
+                  <input
+                    type="text"
+                    name={name}
+                    value={formData[name]}
+                    onChange={handleChange}
+                    className="w-full border rounded-lg p-3"
+                    required
+                  />
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Banking Details */}
-          <div>
-            <h3 className="text-lg font-bold text-green-800 mb-3">Banking Details for Invoice Payments</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block font-semibold text-gray-700 mb-1">Account Name*</label>
-                <input
-                  type="text"
-                  name="accountName"
-                  value={formData.accountName}
-                  onChange={handleChange}
-                  className="w-full border rounded-lg p-3"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block font-semibold text-gray-700 mb-1">BSB*</label>
-                <input
-                  type="text"
-                  name="bsb"
-                  value={formData.bsb}
-                  onChange={handleChange}
-                  className="w-full border rounded-lg p-3"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block font-semibold text-gray-700 mb-1">Account Number*</label>
-                <input
-                  type="text"
-                  name="accountNumber"
-                  value={formData.accountNumber}
-                  onChange={handleChange}
-                  className="w-full border rounded-lg p-3"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Terms & Conditions */}
+          {/* 📜 Terms & Conditions */}
           <div className="border-t pt-8 mt-10">
-            <h3 className="text-lg font-bold text-green-800 mb-2">Terms & Conditions</h3>
+            <h3 className="text-lg font-bold text-green-800 mb-2">
+              Terms & Conditions
+            </h3>
             <p className="text-sm text-gray-600 mb-3">
               Please review the{" "}
               <a
@@ -715,7 +796,7 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
                 className="mt-1 accent-green-700"
               />
               <span className="text-gray-700">
-                I have read and agree to the Grenke/ASLS Terms and Conditions.*
+                I have read and agree to the ASLS Terms and Conditions.*
               </span>
             </label>
 
@@ -735,7 +816,9 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Date Signed*</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Date Signed*
+                </label>
                 <input
                   type="text"
                   name="signatureDate"
@@ -745,12 +828,11 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
                   className="w-full border rounded-lg p-3"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">Format: DD/MM/YYYY</p>
               </div>
             </div>
           </div>
 
-          {/* Buttons */}
+          {/* 🔘 Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 sm:justify-between pt-8 mt-6 border-t">
             <button
               type="button"
@@ -759,7 +841,9 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
             >
               <ArrowLeft className="w-5 h-5" /> Back
             </button>
+
             <div className="flex flex-col sm:flex-row gap-3">
+              {/* Save for Later */}
               <button
                 type="button"
                 onClick={saveFormForLater}
@@ -777,6 +861,7 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
                 )}
               </button>
 
+              {/* Submit */}
               <button
                 type="submit"
                 disabled={loading}
