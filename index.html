@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ASLS Portal</title>
+   <!-- ✅ Force cache refresh after new deployments -->
+<script>
+  (function() {
+    // If Vite environment variable is available, use it — otherwise fallback
+    const version = import.meta?.env?.VITE_APP_VERSION || Date.now().toString();
+    const cachedVersion = localStorage.getItem("asls_app_version");
+
+    if (cachedVersion !== version) {
+      localStorage.setItem("asls_app_version", version);
+      console.log("🧹 Cache cleared, reloading for new deployment version:", version);
+      // Force reload (only happens once per new version)
+      window.location.reload(true);
+    }
+  })();
+</script>
+
   </head>
   <body>
     <div id="root"></div>
