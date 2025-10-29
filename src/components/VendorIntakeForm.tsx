@@ -396,23 +396,7 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-10">
 
-          {/* 🧍 Number of Directors Dropdown */}
-          <div>
-            <label className="font-semibold text-gray-700">
-              Number of Directors*
-            </label>
-            <select
-              name="directorCount"
-              value={directorCount}
-              onChange={(e) => setDirectorCount(parseInt(e.target.value))}
-              className="w-full border rounded-lg p-3 mt-2"
-              required
-            >
-              <option value={1}>1 Director</option>
-              <option value={2}>2 Directors</option>
-            </select>
-          </div>
-
+ 
           {/* 🧾 Business Details */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
@@ -565,7 +549,23 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
               ))}
             </div>
           </div>
-
+         {/* 🧍 Number of Directors Dropdown */}
+          <div>
+            <label className="font-semibold text-gray-700">
+              Number of Directors*
+            </label>
+            <select
+              name="directorCount"
+              value={directorCount}
+              onChange={(e) => setDirectorCount(parseInt(e.target.value))}
+              className="w-full border rounded-lg p-3 mt-2"
+              required
+            >
+              <option value={1}>1 Director</option>
+              <option value={2}>2 Directors</option>
+            </select>
+          </div>
+          
           {/* 🧍 Directors */}
           {formData.directors
             .slice(0, directorCount)
