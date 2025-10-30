@@ -86,30 +86,50 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
   const draftId = searchParams.get("id");
 
   // -------------------- LOAD EXISTING DRAFT --------------------
+useEffect(() => {
+  const loadDraft = async () => {
+    if (!draftId) return;
+    const { data, error } = await supabase
+      .from("vendor_drafts")
+      .select("formData")
+      .eq("id", draftId)
+      .single();
+
+    if (error) {
+      console.error("❌ Failed to load draft", error);
+      return;
+    }
+
+    if (data?.formData) {
+      setFormData((prev) => ({
+        ...prev,
+        ...data.formData,
+        directors: data.formData.directors || prev.directors,
+      }));
+      setSavedId(draftId);
+      console.log("✅ Draft loaded successfully, including uploaded files");
+    }
+  };
+
+  loadDraft();
+}, [draftId]);
   useEffect(() => {
-    const loadDraft = async () => {
-      if (!draftId) return;
-      const { data, error } = await supabase
-        .from("vendor_drafts")
-        .select("formData")
-        .eq("id", draftId)
-        .single();
-
-      if (error) {
-        console.error("❌ Failed to load draft", error);
-        return;
+  if (window.google && window.google.maps) {
+    formData.directors.forEach((d: any) => {
+      const input = document.getElementById(`address-${d.index}`) as HTMLInputElement;
+      if (input) {
+        const autocomplete = new google.maps.places.Autocomplete(input, {
+          types: ["address"],
+          componentRestrictions: { country: "au" },
+        });
+        autocomplete.addListener("place_changed", () => {
+          const place = autocomplete.getPlace();
+          handleDirectorChange(d.index, "address", place.formatted_address || "");
+        });
       }
-
-      if (data?.formData) {
-        setFormData(data.formData);
-        setSavedId(draftId);
-        console.log("✅ Draft loaded successfully");
-      }
-    };
-
-    loadDraft();
-  }, [draftId]);
-
+    });
+  }
+}, [formData.directors]);
   // -------------------- ABN LOOKUP --------------------
   const handleAbnLookup = async (rawAbn: string) => {
     const abn = rawAbn.replace(/\D/g, "");
@@ -250,7 +270,10 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
         if (emailError) throw emailError;
       }
 
-      alert("✅ Your progress has been saved! A return link has been sent to your email.");
+setTimeout(() => {
+  window.alert("✅ Your progress has been saved! Check your email for the return link.");
+}, 100);
+
     } catch (err) {
       console.error("Save failed", err);
       alert("❌ Error saving progress. Please try again.");
@@ -322,58 +345,77 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
   };
 
   // -------------------- SUBMIT FORM --------------------
-  const handleSubmit = async (e: any) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      // 1️⃣ Generate PDF
-      const pdfBlob = await generatePDF();
-      const pdfFileName = `vendor_form_${Date.now()}.pdf`;
+const handleSubmit = async (e: any) => {
+  e.preventDefault();
+  setLoading(true);
 
-      // 2️⃣ Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from("uploads")
-        .upload(pdfFileName, pdfBlob, {
-          contentType: "application/pdf",
-          upsert: true,
-        });
-      if (uploadError) throw uploadError;
+  try {
+    // 1️⃣ Generate PDF
+    const pdfBlob = await generatePDF();
+    const pdfFileName = `vendor_form_${Date.now()}.pdf`;
 
-      const { data: pub } = supabase.storage.from("uploads").getPublicUrl(pdfFileName);
-      const pdfUrl = pub?.publicUrl;
-
-      // 3️⃣ Send email to admin(s)
-      const subject = `ASLS Vendor Intake - ${formData.businessName || "New submission"}`;
-      const html = `
-        <h2>New Vendor Intake Submission</h2>
-        <p><strong>Business Name:</strong> ${formData.businessName}</p>
-        <p><strong>ABN:</strong> ${formData.abnNumber}</p>
-        <p><strong>Entity Type:</strong> ${formData.entityType}</p>
-        <p><strong>Signed By:</strong> ${formData.signatureName} on ${formData.signatureDate}</p>
-        <p><strong>PDF:</strong> <a href="${pdfUrl}" target="_blank">${pdfUrl}</a></p>
-      `;
-
-      // Send to both admin addresses
-      const { error: fnErr } = await supabase.functions.invoke("send-email", {
-        body: {
-          to: ["john@worldmachine.com.au", "admin@asls.net.au"],
-          subject,
-          html,
-          text: `PDF: ${pdfUrl}\n\n${JSON.stringify(formData, null, 2)}`,
-        },
+    // 2️⃣ Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from("uploads")
+      .upload(pdfFileName, pdfBlob, {
+        contentType: "application/pdf",
+        upsert: true,
       });
 
-      if (fnErr) throw fnErr;
+    if (uploadError) throw uploadError;
 
-      alert("✅ Submission successful! Your vendor application has been emailed for review.");
-      onSubmit();
-    } catch (err: any) {
-      console.error("[submit] FAILED", err);
-      alert(`❌ Error submitting form: ${err.message || "Please try again."}`);
-    } finally {
-      setLoading(false);
+    const { data: pub } = supabase.storage
+      .from("uploads")
+      .getPublicUrl(pdfFileName);
+
+    const pdfUrl = pub?.publicUrl;
+
+    // 3️⃣ Prepare email content
+    const subject = `ASLS Vendor Intake - ${formData.businessName || "New submission"}`;
+    const html = `
+      <h2>New Vendor Intake Submission</h2>
+      <p><strong>Business Name:</strong> ${formData.businessName}</p>
+      <p><strong>ABN:</strong> ${formData.abnNumber}</p>
+      <p><strong>Entity Type:</strong> ${formData.entityType}</p>
+      <p><strong>Signed By:</strong> ${formData.signatureName} on ${formData.signatureDate}</p>
+      <p><strong>PDF:</strong> <a href="${pdfUrl}" target="_blank">${pdfUrl}</a></p>
+    `;
+
+    // 4️⃣ Call deployed Supabase Edge Function directly (bypassing client SDK)
+    const emailResponse = await fetch(
+      "https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          to: ["john@worldmachine.com.au", "admin@asls.net.au"],
+          subject,
+          text: `PDF: ${pdfUrl}\n\n${JSON.stringify(formData, null, 2)}`,
+          html,
+        }),
+      }
+    );
+
+    const result = await emailResponse.json();
+
+    if (!emailResponse.ok || !result.ok) {
+      console.error("❌ Email send failed:", result);
+      throw new Error(result.error || "Failed to send email.");
     }
-  };
+
+    alert("✅ Submission successful! Your vendor application has been emailed for review.");
+    onSubmit();
+  } catch (err: any) {
+    console.error("[submit] FAILED", err);
+    alert(`❌ Error submitting form: ${err.message || "Please try again."}`);
+  } finally {
+    setLoading(false);
+  }
+};
+
   // -------------------- FORM JSX --------------------
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-3 sm:px-6">
@@ -500,13 +542,20 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
             <div>
               <label className="font-semibold text-gray-700">Website*</label>
               <input
-                type="url"
-                name="website"
-                value={formData.website}
-                onChange={handleChange}
-                className="w-full border rounded-lg p-3"
-                required
-              />
+  type="text"
+  name="website"
+  placeholder="e.g. www.solarcompany.com.au"
+  value={formData.website}
+  onChange={(e) => {
+    let value = e.target.value.trim();
+    if (value && !/^https?:\/\//i.test(value)) {
+      value = "https://" + value;
+    }
+    setFormData((prev: any) => ({ ...prev, website: value }));
+  }}
+  className="w-full border rounded-lg p-3"
+  required
+/>
             </div>
           </div>
 
@@ -565,7 +614,7 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
               <option value={2}>2 Directors</option>
             </select>
           </div>
-          
+
           {/* 🧍 Directors */}
           {formData.directors
             .slice(0, directorCount)
@@ -625,35 +674,35 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
 
                   {/* Address */}
                   <input
-                    placeholder="Residential Address"
-                    value={d.address}
-                    onChange={(e) =>
-                      handleDirectorChange(d.index, "address", e.target.value)
-                    }
-                    className="col-span-1 sm:col-span-2 border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    required
-                  />
+  id={`address-${d.index}`}
+  placeholder="Start typing your address..."
+  value={d.address}
+  onChange={(e) =>
+    handleDirectorChange(d.index, "address", e.target.value)
+  }
+  className="col-span-1 sm:col-span-2 border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+  required
+/>
+
 
                   {/* Licence details */}
-                  <input
-                    placeholder="Licence Number"
-                    value={d.licenceNumber}
-                    onChange={(e) =>
-                      handleDirectorChange(d.index, "licenceNumber", e.target.value)
-                    }
-                    className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    required
-                  />
-                  <input
-                    placeholder="Licence State (e.g. NSW, VIC)"
-                    value={d.licenceState}
-                    onChange={(e) =>
-                      handleDirectorChange(d.index, "licenceState", e.target.value)
-                    }
-                    className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    required
-                  />
-                  <div>
+                  <select
+  value={d.licenceState}
+  onChange={(e) =>
+    handleDirectorChange(d.index, "licenceState", e.target.value)
+  }
+  className="border-gray-300 rounded-lg p-3 shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+  required
+>
+  <option value="">Select State</option>
+  <option value="NSW">New South Wales</option>
+  <option value="QLD">Queensland</option>
+  <option value="VIC">Victoria</option>
+  <option value="SA">South Australia</option>
+  <option value="WA">Western Australia</option>
+  <option value="TAS">Tasmania</option>
+</select>
+                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">
                       Licence Expiry Date*
                     </label>
@@ -740,6 +789,96 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
             ))}
           </div>
 
+          {/* ⚡ Solar Equipment & Supplies (Brand Partnerships) */}
+<div className="space-y-4 mt-10">
+  <h3 className="text-lg font-bold text-green-800">
+    Solar Equipment & Supplies (Brand Partnerships)
+  </h3>
+  <p className="text-sm text-gray-600 mb-3">
+    Please select all applicable brands your business currently supplies or installs.
+  </p>
+
+  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+    {[
+      {
+        label: "Panels",
+        field: "solarPanels",
+        options: [
+          "Canadian Solar",
+          "Hyundai Solar",
+          "Jinko",
+          "Longi",
+          "QCells",
+          "Risen Solar",
+          "REC",
+          "SunPower",
+          "SunTech",
+          "Trina",
+          "Other",
+        ],
+      },
+      {
+        label: "Inverters",
+        field: "inverters",
+        options: [
+          "Fronius",
+          "GE",
+          "Goodwe",
+          "Growatt",
+          "Huawei",
+          "Solaredge",
+          "SolaX Power",
+          "Solis",
+          "SMA",
+          "Other",
+        ],
+      },
+      {
+        label: "Batteries",
+        field: "batteries",
+        options: [
+          "Alpha ESS",
+          "BYD",
+          "Enphase",
+          "LG",
+          "Sonnen",
+          "Tesla",
+          "Other",
+        ],
+      },
+    ].map(({ label, field, options }) => (
+      <div key={label} className="border rounded-lg p-4 bg-gray-50 shadow-sm">
+        <h4 className="font-semibold mb-2 text-gray-700">{label}</h4>
+        <div className="space-y-1">
+          {options.map((opt) => (
+            <label
+              key={opt}
+              className="flex items-center space-x-2 text-sm text-gray-700"
+            >
+              <input
+                type="checkbox"
+                className="accent-green-700"
+                checked={formData[field]?.includes(opt)}
+                onChange={(e) => {
+                  const isChecked = e.target.checked;
+                  setFormData((prev: any) => {
+                    const current = new Set(prev[field] || []);
+                    if (isChecked) current.add(opt);
+                    else current.delete(opt);
+                    return { ...prev, [field]: Array.from(current) };
+                  });
+                }}
+              />
+              <span>{opt}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
+
+
           {/* 💳 Banking Details */}
           <div>
             <h3 className="text-lg font-bold text-green-800 mb-3">
@@ -769,22 +908,23 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
           </div>
 
           {/* 📜 Terms & Conditions */}
-          <div className="border-t pt-8 mt-10">
-            <h3 className="text-lg font-bold text-green-800 mb-2">
-              Terms & Conditions
-            </h3>
-            <p className="text-sm text-gray-600 mb-3">
-              Please review the{" "}
-              <a
-                href={`${window.location.origin}/terms-and-conditions.pdf`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-green-700 underline hover:text-green-800"
-              >
-                Terms and Conditions
-              </a>{" "}
-              before proceeding.
-            </p>
+         <p className="text-sm text-gray-600 mb-3">
+  Please review the{" "}
+  <a
+    href={`${window.location.origin}/terms-and-conditions.pdf`}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="text-green-700 underline hover:text-green-800"
+  >
+    Terms and Conditions
+  </a>{" "}
+  before proceeding.
+  <br />
+  <span className="text-gray-500 text-xs italic">
+    (It will open in a new tab — return here when done.)
+  </span>
+</p>
+
 
             <label className="flex items-start space-x-3 mt-3">
               <input
@@ -800,87 +940,91 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
               </span>
             </label>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Signature (Full Name)*
-                </label>
-                <input
-                  type="text"
-                  name="signatureName"
-                  placeholder="Type Full Name"
-                  value={formData.signatureName}
-                  onChange={handleChange}
-                  className="w-full border rounded-lg p-3"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Date Signed*
-                </label>
-                <input
-                  type="text"
-                  name="signatureDate"
-                  placeholder="DD/MM/YYYY"
-                  value={formData.signatureDate}
-                  onChange={handleChange}
-                  className="w-full border rounded-lg p-3"
-                  required
-                />
-              </div>
-            </div>
-          </div>
+            {/* ✍️ Signature Section */}
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+  {/* Signature Name */}
+  <div>
+    <label className="block text-sm font-semibold text-gray-700 mb-1">
+      Signature (Full Name)*
+    </label>
+    <input
+      type="text"
+      name="signatureName"
+      placeholder="Type Full Name"
+      value={formData.signatureName}
+      onChange={handleChange}
+      className="w-full border rounded-lg p-3"
+      required
+    />
+  </div>
 
-          {/* 🔘 Buttons */}
-          <div className="flex flex-col sm:flex-row gap-3 sm:justify-between pt-8 mt-6 border-t">
-            <button
-              type="button"
-              onClick={onBack}
-              className="px-6 py-2 border border-gray-400 rounded-lg text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-            >
-              <ArrowLeft className="w-5 h-5" /> Back
-            </button>
+  {/* Signature Date */}
+  <div>
+    <label className="block text-sm font-semibold text-gray-700 mb-1">
+      Date Signed*
+    </label>
+    <input
+      type="text"
+      name="signatureDate"
+      placeholder="DD/MM/YYYY"
+      value={formData.signatureDate}
+      onChange={handleChange}
+      className="w-full border rounded-lg p-3"
+      required
+    />
+  </div>
+</div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
-              {/* Save for Later */}
-              <button
-                type="button"
-                onClick={saveFormForLater}
-                disabled={saving}
-                className="px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 transition disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" /> Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-5 h-5" /> Save for Later
-                  </>
-                )}
-              </button>
+{/* 🔘 Buttons (still inside the form) */}
+<div className="flex flex-col sm:flex-row gap-3 sm:justify-between pt-8 mt-6 border-t">
+  <button
+    type="button"
+    onClick={onBack}
+    className="px-6 py-2 border border-gray-400 rounded-lg text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+  >
+    <ArrowLeft className="w-5 h-5" /> Back
+  </button>
 
-              {/* Submit */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-8 py-3 bg-green-700 text-white font-semibold rounded-lg hover:bg-green-800 transition disabled:opacity-50"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="inline w-5 h-5 animate-spin mr-2" /> Submitting...
-                  </>
-                ) : (
-                  "Submit Application"
-                )}
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
+  <div className="flex flex-col sm:flex-row gap-3">
+    {/* Save for Later */}
+    <button
+      type="button"
+      onClick={saveFormForLater}
+      disabled={saving}
+      className="px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 transition disabled:opacity-50 flex items-center justify-center gap-2"
+    >
+      {saving ? (
+        <>
+          <Loader2 className="w-5 h-5 animate-spin" /> Saving...
+        </>
+      ) : (
+        <>
+          <Save className="w-5 h-5" /> Save for Later
+        </>
+      )}
+    </button>
+
+    {/* Submit */}
+    <button
+      type="submit"
+      disabled={loading}
+      className="px-8 py-3 bg-green-700 text-white font-semibold rounded-lg hover:bg-green-800 transition disabled:opacity-50"
+    >
+      {loading ? (
+        <>
+          <Loader2 className="inline w-5 h-5 animate-spin mr-2" /> Submitting...
+        </>
+      ) : (
+        "Submit Application"
+      )}
+    </button>
+  </div>
+</div>
+
+</form> {/* ✅ Close form here, only once */}
+</div>
+</div>
+);
 };
 
 export default VendorIntakeForm;
