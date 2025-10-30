@@ -437,7 +437,7 @@ const handleDirectorChange = (index: number, field: string, value: any) => {
   };
 
   // -------------------- SUBMIT FORM --------------------
-const handleSubmit = async (e: any) => {
+const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   setLoading(true);
 
@@ -480,6 +480,7 @@ const handleSubmit = async (e: any) => {
 
     // 4️⃣ Send email via Supabase Edge Function
     console.log("📧 Sending email to John and Admin...");
+
     const emailResponse = await fetch(
       "https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email",
       {
@@ -489,13 +490,14 @@ const handleSubmit = async (e: any) => {
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
-to: "john@worldmachine.com.au, admin@asls.net.au",
-
-  subject,
-  text: `PDF: ${pdfUrl}\n\n${JSON.stringify(formData, null, 2)}`,
-  html,
-}),
-
+          to: [
+            { email: "john@worldmachine.com.au" },
+            { email: "admin@asls.net.au" },
+          ],
+          subject,
+          text: `PDF: ${pdfUrl}\n\n${JSON.stringify(formData, null, 2)}`,
+          html,
+        }),
       }
     );
 
@@ -518,7 +520,10 @@ to: "john@worldmachine.com.au, admin@asls.net.au",
     console.log("📨 Vendor form submitted for:", formData.businessName);
     console.log("📎 PDF URL:", pdfUrl);
 
-    onSubmit(); // triggers any post-submit navigation or cleanup
+    // Only call this if it's defined as a function prop
+    if (typeof onSubmit === "function") {
+      onSubmit();
+    }
   } catch (err: any) {
     console.error("[submit] ❌ FAILED", err);
     alert(`❌ Error submitting form: ${err.message || "Please try again."}`);
