@@ -4,11 +4,10 @@
 // -----------------------------------------------
 
 import React, { useState, useEffect } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { Loader2, ArrowLeft, Camera, Save } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import jsPDF from "jspdf";
-import "jspdf-autotable";
-import { PDFDocument } from "pdf-lib";
 import { useSearchParams } from "react-router-dom";
 // ✅ Load Google Maps API script only once if not already loaded
 const loadGoogleMapsScript = (callback: () => void) => {
@@ -376,137 +375,154 @@ const handleDirectorChange = (index: number, field: string, value: any) => {
   };
 
   // -------------------- PDF GENERATION --------------------
-const generatePDF = async () => {
-  const doc = new jsPDF({ unit: "pt", format: "a4" });
+const generatePDF = async (formData: any, driverLicenceFile?: File, supportingDocs?: File[]) => {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
 
-  // 🖼️ Load logos
-  const aslsLogo = await fetch("/ASLS-logo.png").then(res => res.blob());
-  const wmmLogo = await fetch("/World-Machine-Money-Logo.png").then(res => res.blob());
-  const aslsData = await blobToBase64(aslsLogo);
-  const wmmData = await blobToBase64(wmmLogo);
+  // 🖼️ Logos (top center)
+  const aslsLogo = await fetch("/ASLS-logo.png").then((res) => res.blob());
+  const wmmLogo = await fetch("/World-Machine-Money-Logo.png").then((res) => res.blob());
+  const aslsImg = await readAsBase64(aslsLogo);
+  const wmmImg = await readAsBase64(wmmLogo);
 
-  // Utility to convert blob to base64
-  async function blobToBase64(blob: Blob) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+  const logoWidth = 40;
+  const spacing = 15;
+  const totalWidth = logoWidth * 2 + spacing;
+  const startX = (pageWidth - totalWidth) / 2;
+
+  doc.addImage(aslsImg, "PNG", startX, 10, logoWidth, 20);
+  doc.addImage(wmmImg, "PNG", startX + logoWidth + spacing, 10, logoWidth, 20);
+
+  doc.setFontSize(16);
+  doc.text("ASLS Vendor Intake Form", pageWidth / 2, 40, { align: "center" });
+  doc.setFontSize(12);
+  doc.text("Australian Solar Lending Solutions in partnership with World Machine Money", pageWidth / 2, 48, { align: "center" });
+
+  // 🧾 Business Details Section
+  doc.setFontSize(14);
+  doc.text("Business Details", 14, 65);
+  autoTable(doc, {
+    startY: 70,
+    head: [["Field", "Information"]],
+    body: [
+      ["ABN", formData.abn || ""],
+      ["Business Name", formData.businessName || ""],
+      ["Entity Type", formData.entityType || ""],
+      ["Phone Number", formData.phone || ""],
+      ["Mobile Number", formData.mobile || ""],
+      ["Email", formData.email || ""],
+      ["Website", formData.website || ""],
+      ["Business Address", formData.businessAddress || ""],
+      ["Date of Incorporation", formData.dateOfIncorporation || ""],
+    ],
+    styles: { fontSize: 10 },
+    headStyles: { fillColor: [45, 139, 89] },
+  });
+
+  // 👤 Directors Section
+  const directors = formData.directors || [];
+  doc.setFontSize(14);
+  doc.text("Director(s)", 14, doc.lastAutoTable.finalY + 10);
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 15,
+    head: [["Name", "Email", "Phone"]],
+    body: directors.map((d: any) => [d.name || "", d.email || "", d.phone || ""]),
+    styles: { fontSize: 10 },
+    headStyles: { fillColor: [66, 139, 202] },
+  });
+
+  // ☀️ Solar Equipment
+  const solar = formData.solarEquipment || [];
+  doc.setFontSize(14);
+  doc.text("Solar Equipment", 14, doc.lastAutoTable.finalY + 10);
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 15,
+    head: [["Brand", "Model", "Capacity", "Warranty"]],
+    body: solar.map((s: any) => [
+      s.brand || "",
+      s.model || "",
+      s.capacity || "",
+      s.warranty || "",
+    ]),
+    styles: { fontSize: 10 },
+    headStyles: { fillColor: [255, 204, 0] },
+  });
+
+  // 📎 Attachments Info
+  doc.setFontSize(14);
+  doc.text("Uploaded Documents", 14, doc.lastAutoTable.finalY + 10);
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 15,
+    head: [["Document Type", "File Name"]],
+    body: [
+      ["Driver Licence", driverLicenceFile?.name || "Not Uploaded"],
+      ...(supportingDocs?.map((f) => ["Supporting Document", f.name]) || []),
+    ],
+    styles: { fontSize: 10 },
+    headStyles: { fillColor: [102, 102, 102] },
+  });
+
+  // ✅ Terms and Conditions Section
+  doc.setFontSize(14);
+  doc.text("Agreement", 14, doc.lastAutoTable.finalY + 15);
+  const agreementY = doc.lastAutoTable.finalY + 25;
+  const checkBoxX = 16;
+  const checkBoxSize = 5;
+
+  doc.rect(checkBoxX, agreementY - 4, checkBoxSize, checkBoxSize);
+  if (formData.agreedToTerms) {
+    doc.text("✔", checkBoxX + 1, agreementY);
   }
 
-  // Add logos
-  doc.addImage(aslsData, "PNG", 40, 30, 120, 60);
-  doc.addImage(wmmData, "PNG", 440, 35, 120, 60);
+  doc.setFontSize(11);
+  doc.text("I agree to the ASLS Vendor Terms & Conditions.", checkBoxX + 8, agreementY);
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.text("ASLS Vendor Intake Form", 220, 110);
+  // ✍️ Signature Section
+  doc.setFontSize(14);
+  doc.text("Signature", 14, agreementY + 15);
 
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "normal");
+  if (formData.signature) {
+    const sigImg = formData.signature;
+    try {
+      doc.addImage(sigImg, "PNG", 14, agreementY + 20, 60, 20);
+    } catch {
+      doc.text("[Signature Image Error]", 14, agreementY + 30);
+    }
+  }
 
-  let y = 140;
+  doc.text(`Signed on: ${formData.signatureDate || "Not provided"}`, 14, agreementY + 50);
 
-  // ---------- Business Info ----------
-  doc.setFont("helvetica", "bold");
-  doc.text("Business Details", 40, y);
-  doc.setFont("helvetica", "normal");
-  y += 20;
-  const details = [
-    ["Business Name", formData.businessName],
-    ["ABN", formData.abnNumber],
-    ["Entity Type", formData.entityType],
-    ["Date of Incorporation", formData.dateOfIncorporation || "N/A"],
-    ["Phone", formData.phone],
-    ["Mobile", formData.mobile],
-    ["Email", formData.email],
-    ["Website", formData.website],
-    ["Address", `${formData.streetNumber} ${formData.streetName}, ${formData.suburb}, ${formData.state} ${formData.postcode}`],
-  ];
-  details.forEach(([label, value]) => {
-    doc.text(`${label}: ${value || "-"}`, 50, y);
-    y += 16;
-  });
-
-  // ---------- Directors ----------
-  y += 10;
-  doc.setFont("helvetica", "bold");
-  doc.text("Directors", 40, y);
-  doc.setFont("helvetica", "normal");
-  y += 20;
-  formData.directors.slice(0, directorCount).forEach((d: any, i: number) => {
-    doc.text(`Director ${i + 1}: ${d.firstName} ${d.middleName} ${d.surname}`, 50, y); y += 16;
-    doc.text(`DOB: ${d.dob} | Licence: ${d.licenceNumber} (${d.licenceState})`, 50, y); y += 16;
-    doc.text(`Phone: ${d.phone} | Mobile: ${d.mobile}`, 50, y); y += 16;
-    doc.text(`Address: ${d.address}`, 50, y); y += 16;
-    doc.text(`Licence Expiry: ${d.licenceExpiry}`, 50, y); y += 20;
-  });
-
-  // ---------- Supporting Documents ----------
-  doc.setFont("helvetica", "bold");
-  doc.text("Supporting Documents", 40, y);
-  doc.setFont("helvetica", "normal");
-  y += 20;
-  const files = [
-    ["Business Registration / Trust Deed", formData.certificateFiles],
-    ["Bank Statement Header", formData.bankStatement],
-    ["Tax Invoice Template", formData.taxInvoiceTemplate],
-    ["Driver’s Licence (Front)", formData.directors[0]?.licenceFront],
-    ["Driver’s Licence (Back)", formData.directors[0]?.licencePhoto],
-  ];
-  files.forEach(([label, value]) => {
-    doc.text(`${label}: ${value ? "✅ Uploaded" : "❌ Missing"}`, 50, y);
-    y += 16;
-  });
-
-  // ---------- Solar Equipment ----------
-  y += 20;
-  doc.setFont("helvetica", "bold");
-  doc.text("Solar Equipment & Supplies", 40, y);
-  doc.setFont("helvetica", "normal");
-  y += 20;
-  doc.text(`Panels: ${(formData.solarPanels || []).join(", ") || "None"}`, 50, y); y += 16;
-  doc.text(`Inverters: ${(formData.inverters || []).join(", ") || "None"}`, 50, y); y += 16;
-  doc.text(`Batteries: ${(formData.batteries || []).join(", ") || "None"}`, 50, y); y += 20;
-
-  // ---------- Banking ----------
-  doc.setFont("helvetica", "bold");
-  doc.text("Banking Details", 40, y);
-  doc.setFont("helvetica", "normal");
-  y += 20;
-  doc.text(`Account Name: ${formData.accountName}`, 50, y); y += 16;
-  doc.text(`BSB: ${formData.bsb}`, 50, y); y += 16;
-  doc.text(`Account Number: ${formData.accountNumber}`, 50, y); y += 20;
-
-  // ---------- Terms ----------
-  doc.setFont("helvetica", "bold");
-  doc.text("Terms & Conditions", 40, y);
-  doc.setFont("helvetica", "normal");
-  y += 20;
-  const accepted = formData.tcsAccepted ? "✅ Accepted" : "❌ Not Accepted";
-  doc.text(`I agree to the ASLS Terms & Conditions: ${accepted}`, 50, y); y += 20;
-  doc.text(`Signed by: ${formData.signatureName}`, 50, y); y += 16;
-  doc.text(`Date: ${formData.signatureDate}`, 50, y); y += 30;
-
-  // Footer
+  // 🧾 Footer
   doc.setFontSize(10);
-  doc.text(`Generated by ASLS Vendor Portal — ${new Date().toLocaleString()}`, 40, 780);
+  doc.text("Generated automatically by ASLS Vendor Portal", pageWidth / 2, 285, {
+    align: "center",
+  });
 
-  // ✅ Merge with Terms & Conditions PDF
-  const formBytes = doc.output("arraybuffer");
-  const termsUrl = "/terms-and-conditions.pdf";
-  const response = await fetch(termsUrl);
-  const termsBytes = await response.arrayBuffer();
-
-  const formDoc = await PDFDocument.load(formBytes);
-  const termsDoc = await PDFDocument.load(termsBytes);
-  const pages = await formDoc.copyPages(termsDoc, termsDoc.getPageIndices());
-  pages.forEach((p) => formDoc.addPage(p));
-
-  const finalPdf = await formDoc.save();
-  return new Blob([finalPdf], { type: "application/pdf" });
+  // Save Blob + Base64 Return
+  const pdfBlob = doc.output("blob");
+  const pdfBase64 = await blobToBase64(pdfBlob);
+  return { pdfBlob, pdfBase64 };
 };
+
+// 🔄 Helper to read logo as Base64
+const readAsBase64 = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
+// 🔄 Convert Blob → Base64
+const blobToBase64 = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve((reader.result as string).split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
+
 
   // -------------------- SUBMIT FORM --------------------
 const handleSubmit = async (e: React.FormEvent) => {
@@ -514,91 +530,98 @@ const handleSubmit = async (e: React.FormEvent) => {
   setLoading(true);
 
   try {
-    console.log("🚀 Starting Vendor Form submission...");
+    // 🧾 1️⃣ Generate PDF summary
+    const { pdfBlob } = await generatePDF(
+      formData,
+      formData.driverLicenceFile,
+      formData.supportingDocs
+    );
 
-    // 1️⃣ Generate combined PDF (form + T&Cs)
-    const pdfBlob = await generatePDF();
-    const pdfFileName = `vendor_form_${Date.now()}.pdf`;
+    const pdfFileName = `vendor_${formData.businessName}_summary.pdf`;
 
-    // 2️⃣ Upload PDF to Supabase Storage
-    console.log("📤 Uploading PDF to Supabase...");
-    const { error: uploadError } = await supabase.storage
+    // 📁 2️⃣ Upload PDF to Supabase
+    const { data: pdfData, error: pdfError } = await supabase.storage
       .from("uploads")
-      .upload(pdfFileName, pdfBlob, {
+      .upload(`vendor_forms/${pdfFileName}`, pdfBlob, {
         contentType: "application/pdf",
         upsert: true,
       });
+    if (pdfError) throw pdfError;
 
-    if (uploadError) throw uploadError;
+    const pdfUrl = `${supabase.storageUrl}/object/public/uploads/vendor_forms/${pdfFileName}`;
 
-    const { data: pub } = supabase.storage.from("uploads").getPublicUrl(pdfFileName);
-    const pdfUrl = pub?.publicUrl;
-    console.log("✅ PDF uploaded successfully:", pdfUrl);
+    // 🪪 3️⃣ Upload Driver Licence (if exists)
+    let licenceUrl = null;
+    if (formData.driverLicenceFile) {
+      const { data, error } = await supabase.storage
+        .from("uploads")
+        .upload(
+          `vendor_docs/${formData.businessName}_licence_${Date.now()}_${formData.driverLicenceFile.name}`,
+          formData.driverLicenceFile
+        );
+      if (error) throw error;
+      licenceUrl = `${supabase.storageUrl}/object/public/${data.path}`;
+    }
 
-    // 3️⃣ Compose email
-    const subject = `ASLS Vendor Intake - ${formData.businessName || "New submission"}`;
-    const html = `
-      <h2>New Vendor Intake Submission</h2>
-      <p><strong>Business Name:</strong> ${formData.businessName}</p>
-      <p><strong>ABN:</strong> ${formData.abnNumber}</p>
-      <p><strong>Phone:</strong> ${formData.phone}</p>
-      <p><strong>Mobile:</strong> ${formData.mobile}</p>
-      <p><strong>Entity Type:</strong> ${formData.entityType}</p>
-      <p><strong>Signed By:</strong> ${formData.signatureName} on ${formData.signatureDate}</p>
-      <p><strong>PDF:</strong> <a href="${pdfUrl}" target="_blank">${pdfUrl}</a></p>
-      <hr />
-      <p><em>This email was automatically sent from the ASLS Vendor Portal.</em></p>
-    `;
+    // 📎 4️⃣ Upload Supporting Documents
+    const supportingUrls: string[] = [];
+    if (formData.supportingDocs?.length) {
+      for (const file of formData.supportingDocs) {
+        const { data, error } = await supabase.storage
+          .from("uploads")
+          .upload(
+            `vendor_docs/${formData.businessName}_support_${Date.now()}_${file.name}`,
+            file
+          );
+        if (error) throw error;
+        supportingUrls.push(
+          `${supabase.storageUrl}/object/public/${data.path}`
+        );
+      }
+    }
 
-    // 4️⃣ Send email via Supabase Edge Function
-    console.log("📧 Sending email to John and Admin...");
+    // 📧 5️⃣ Send Email via Supabase Edge Function
+    const emailPayload = {
+      to: ["john@asls.net.au", "admin@asls.net.au"],
+      subject: `New Vendor Submission – ${formData.businessName}`,
+      text: `A new vendor intake form has been submitted by ${formData.businessName}.`,
+      html: `
+        <h2>New Vendor Intake Submission</h2>
+        <p><strong>Business Name:</strong> ${formData.businessName}</p>
+        <p><strong>Email:</strong> ${formData.email}</p>
+        <p><strong>Phone:</strong> ${formData.phone}</p>
+        <p><strong>Website:</strong> ${formData.website}</p>
+        <p><strong>Address:</strong> ${formData.businessAddress || "—"}</p>
 
-    const emailResponse = await fetch(
+        <hr/>
+        <h3>📄 Documents</h3>
+        <p><a href="${pdfUrl}" target="_blank">View Vendor Summary PDF</a></p>
+        ${licenceUrl ? `<p><a href="${licenceUrl}" target="_blank">Driver Licence</a></p>` : ""}
+        ${
+          supportingUrls.length
+            ? `<p>Supporting Documents:<br>${supportingUrls
+                .map((url) => `<a href="${url}" target="_blank">${url}</a>`)
+                .join("<br>")}</p>`
+            : ""
+        }
+      `,
+    };
+
+    const res = await fetch(
       "https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email",
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          to: [
-            { email: "john@worldmachine.com.au" },
-            { email: "admin@asls.net.au" },
-          ],
-          subject,
-          text: `PDF: ${pdfUrl}\n\n${JSON.stringify(formData, null, 2)}`,
-          html,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(emailPayload),
       }
     );
 
-    let result;
-    try {
-      result = await emailResponse.json();
-    } catch {
-      console.warn("⚠️ Email response not JSON — continuing anyway");
-    }
+    if (!res.ok) throw new Error("Email failed to send");
 
-    if (!emailResponse.ok) {
-      console.error("❌ Email failed:", result || emailResponse);
-      throw new Error(result?.error || "Email function failed");
-    }
-
-    console.log("✅ Email successfully sent:", result);
-
-    // 5️⃣ Notify user and trigger form reset / confirmation
-    alert("✅ Submission successful! Your vendor application has been emailed for review.");
-    console.log("📨 Vendor form submitted for:", formData.businessName);
-    console.log("📎 PDF URL:", pdfUrl);
-
-    // Only call this if it's defined as a function prop
-    if (typeof onSubmit === "function") {
-      onSubmit();
-    }
+    alert("✅ Vendor Intake Form submitted successfully!");
   } catch (err: any) {
-    console.error("[submit] ❌ FAILED", err);
-    alert(`❌ Error submitting form: ${err.message || "Please try again."}`);
+    console.error("❌ Submission Error:", err);
+    alert(`❌ ${err.message}`);
   } finally {
     setLoading(false);
   }
@@ -679,65 +702,83 @@ const handleSubmit = async (e: React.FormEvent) => {
             )}
           </div>
 
-          {/* 📞 Contact */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
-            <div>
-              <label className="font-semibold text-gray-700">Phone Number*</label>
-              <input
-                type="tel"
-                name="phone"
-                placeholder="(02) 1234 5678"
-                value={formData.phone}
-                onChange={handleChange}
-                className="w-full border rounded-lg p-3"
-                required
-              />
-            </div>
+        {/* 📞 Contact */}
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
+  <div>
+    <label className="font-semibold text-gray-700">Phone Number*</label>
+    <input
+      type="tel"
+      name="phone"
+      placeholder="(02) 1234 5678"
+      value={formData.phone}
+      onChange={handleChange}
+      className="w-full border rounded-lg p-3"
+      required
+    />
+  </div>
 
-            <div>
-              <label className="font-semibold text-gray-700">Mobile Number*</label>
-              <input
-                type="tel"
-                name="mobile"
-                placeholder="0412 345 678"
-                value={formData.mobile}
-                onChange={handleChange}
-                className="w-full border rounded-lg p-3"
-                required
-              />
-            </div>
+  <div>
+    <label className="font-semibold text-gray-700">Mobile Number*</label>
+    <input
+      type="tel"
+      name="mobile"
+      placeholder="0412 345 678"
+      value={formData.mobile}
+      onChange={handleChange}
+      className="w-full border rounded-lg p-3"
+      required
+    />
+  </div>
 
-            <div>
-              <label className="font-semibold text-gray-700">Email*</label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                className="w-full border rounded-lg p-3"
-                required
-              />
-            </div>
+  <div>
+    <label className="font-semibold text-gray-700">Email*</label>
+    <input
+      type="email"
+      name="email"
+      value={formData.email}
+      onChange={handleChange}
+      className="w-full border rounded-lg p-3"
+      required
+    />
+  </div>
 
-            <div>
-              <label className="font-semibold text-gray-700">Website*</label>
-              <input
-                type="text"
-                name="website"
-                placeholder="e.g. www.solarcompany.com.au"
-                value={formData.website}
-                onChange={(e) => {
-                  let value = e.target.value.trim();
-                  if (value && !/^https?:\/\//i.test(value)) {
-                    value = "https://" + value;
-                  }
-                  setFormData((prev: any) => ({ ...prev, website: value }));
-                }}
-                className="w-full border rounded-lg p-3"
-                required
-              />
-            </div>
-          </div>
+  <div>
+    <label className="font-semibold text-gray-700">Website*</label>
+    <input
+      type="text"
+      name="website"
+      placeholder="e.g. www.solarcompany.com.au"
+      value={formData.website}
+      onChange={(e) => {
+        let value = e.target.value.trim();
+        if (value && !/^https?:\/\//i.test(value)) {
+          value = "https://" + value;
+        }
+        setFormData((prev: any) => ({ ...prev, website: value }));
+      }}
+      className="w-full border rounded-lg p-3"
+      required
+    />
+  </div>
+</div>
+
+{/* 🏠 Business Address */}
+<div className="mt-6">
+  <label className="font-semibold text-gray-700">Business Address*</label>
+  <input
+    id="businessAddress"
+    type="text"
+    name="businessAddress"
+    placeholder="Start typing to search address..."
+    value={formData.businessAddress || ""}
+    onChange={(e) =>
+      setFormData((prev: any) => ({ ...prev, businessAddress: e.target.value }))
+    }
+    className="w-full border rounded-lg p-3"
+    required
+  />
+</div>
+
 
           {/* 🧍 Directors Section */}
           <div>
