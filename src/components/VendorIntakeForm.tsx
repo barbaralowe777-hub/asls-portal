@@ -254,21 +254,36 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     }
   };
 
-  const handleDirectorFileUpload = async (e: any, dirIndex: number, field: string) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const url = await uploadFile(file, `director_${dirIndex}`);
-      setFormData((prev: any) => {
-        const directors = [...prev.directors];
-        directors[dirIndex - 1][field] = url;
-        return { ...prev, directors };
-      });
-      console.log(`✅ Uploaded ${field} for Director ${dirIndex}`);
-    } catch (err) {
-      console.error("❌ Director upload error", err);
-    }
-  };
+ const handleDirectorFileUpload = async (e: any, dirIndex: number, field: string) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  try {
+    // Upload to Supabase Storage
+    const filePath = `vendor_docs/director_${dirIndex}_${field}_${Date.now()}_${file.name}`;
+    const { data, error } = await supabase.storage.from("uploads").upload(filePath, file);
+
+    if (error) throw error;
+
+    const { data: publicUrlData } = supabase.storage
+      .from("uploads")
+      .getPublicUrl(filePath);
+    const fileUrl = publicUrlData.publicUrl;
+
+    // Update formData with both file and its URL
+    setFormData((prev: any) => {
+      const directors = [...prev.directors];
+      directors[dirIndex - 1][field] = file; // store the file
+      directors[dirIndex - 1][`${field}Url`] = fileUrl; // store the public URL
+      return { ...prev, directors };
+    });
+
+    console.log(`✅ Uploaded ${field} for Director ${dirIndex}:`, fileUrl);
+  } catch (err) {
+    console.error("❌ Director upload failed:", err);
+  }
+};
+
 
   // -------------------- SAVE FOR LATER --------------------
   const saveFormForLater = async () => {
@@ -464,8 +479,28 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
         .from("uploads")
         .getPublicUrl(`vendor_forms/${pdfFileName}`);
       const pdfUrl = pdfUrlData.publicUrl;
+// 2️⃣ Handle Licence URLs
+let licenceUrl = null;
+const licenceUrls: string[] = [];
 
-      // 3️⃣ Send Email
+for (const [index, director] of formData.directors.entries()) {
+  const frontUrl = director.licenceFrontUrl || null;
+  const backUrl = director.licencePhotoUrl || null;
+
+  if (frontUrl || backUrl) {
+    licenceUrls.push(
+      `<strong>Director ${index + 1}</strong><br>` +
+      `${frontUrl ? `Front: <a href="${frontUrl}" target="_blank">View</a><br>` : ""}` +
+      `${backUrl ? `Back: <a href="${backUrl}" target="_blank">View</a>` : ""}`
+    );
+  }
+}
+
+if (licenceUrls.length > 0) {
+  licenceUrl = licenceUrls.join("<hr>");
+}
+
+// 3️⃣ Send Email
 const emailPayload = {
   to: ["john@worldmachine.com.au", "admin@asls.net.au"],
   subject: `New Vendor Submission – ${formData.businessName}`,
@@ -481,7 +516,8 @@ const emailPayload = {
     <hr/>
     <h3>📄 Documents</h3>
     <p><a href="${pdfUrl}" target="_blank">View Vendor Summary PDF</a></p>
-    ${licenceUrl ? `<p><a href="${licenceUrl}" target="_blank">Driver Licence</a></p>` : ""}
+    ${licenceUrl ? `<h4>Driver Licence(s):</h4><p>${licenceUrl}</p>` : ""}
+
     ${
       supportingUrls.length
         ? `<p>Supporting Documents:<br>${supportingUrls
@@ -491,6 +527,7 @@ const emailPayload = {
     }
   `,
 };
+
 
 
       const res = await fetch(
