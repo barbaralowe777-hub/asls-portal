@@ -376,65 +376,137 @@ const handleDirectorChange = (index: number, field: string, value: any) => {
   };
 
   // -------------------- PDF GENERATION --------------------
-  const generatePDF = async () => {
-    const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text("ASLS Vendor Intake Form", 14, 20);
-    doc.setFontSize(12);
+const generatePDF = async () => {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
 
-    doc.text(`Business Name: ${formData.businessName}`, 14, 35);
-    doc.text(`ABN: ${formData.abnNumber}`, 14, 43);
-    doc.text(`Entity Type: ${formData.entityType}`, 14, 51);
-    doc.text(`Phone: ${formData.phone}`, 14, 59);
-    doc.text(`Mobile: ${formData.mobile}`, 14, 67);
-    doc.text(`Email: ${formData.email}`, 14, 75);
-    doc.text(
-      `Address: ${formData.streetNumber} ${formData.streetName}, ${formData.suburb}, ${formData.state} ${formData.postcode}`,
-      14, 83
-    );
+  // 🖼️ Load logos
+  const aslsLogo = await fetch("/ASLS-logo.png").then(res => res.blob());
+  const wmmLogo = await fetch("/World-Machine-Money-Logo.png").then(res => res.blob());
+  const aslsData = await blobToBase64(aslsLogo);
+  const wmmData = await blobToBase64(wmmLogo);
 
-    let y = 95;
-    doc.text("Directors:", 14, y);
-    y += 8;
-
-    formData.directors.slice(0, directorCount).forEach((d: any, i: number) => {
-      doc.text(`Director ${i + 1}: ${d.firstName} ${d.middleName} ${d.surname}`, 14, y);
-      y += 8;
-      doc.text(`Phone: ${d.phone} | Mobile: ${d.mobile}`, 14, y);
-      y += 8;
-      doc.text(`DOB: ${d.dob} | Licence: ${d.licenceNumber} (${d.licenceState})`, 14, y);
-      y += 8;
-      doc.text(`Address: ${d.address}`, 14, y);
-      y += 10;
+  // Utility to convert blob to base64
+  async function blobToBase64(blob: Blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
     });
+  }
 
-    doc.text(`Account Name: ${formData.accountName}`, 14, y + 5);
-    doc.text(`BSB: ${formData.bsb} | Account Number: ${formData.accountNumber}`, 14, y + 13);
+  // Add logos
+  doc.addImage(aslsData, "PNG", 40, 30, 120, 60);
+  doc.addImage(wmmData, "PNG", 440, 35, 120, 60);
 
-    const mainFormPdf = doc.output("arraybuffer");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text("ASLS Vendor Intake Form", 220, 110);
 
-    // merge with Terms & Conditions
-    let termsUrl = "/terms-and-conditions.pdf";
-    if (import.meta.env.MODE === "development") {
-      termsUrl = `${window.location.protocol}//${window.location.host}/terms-and-conditions.pdf`;
-    }
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "normal");
 
-    const response = await fetch(termsUrl);
-    if (!response.ok) throw new Error("Failed to load Terms PDF");
-    const termsBytes = await response.arrayBuffer();
+  let y = 140;
 
-    const formDoc = await PDFDocument.load(mainFormPdf);
-    const termsDoc = await PDFDocument.load(termsBytes);
-    const pages = await formDoc.copyPages(termsDoc, termsDoc.getPageIndices());
-    pages.forEach((p) => formDoc.addPage(p));
+  // ---------- Business Info ----------
+  doc.setFont("helvetica", "bold");
+  doc.text("Business Details", 40, y);
+  doc.setFont("helvetica", "normal");
+  y += 20;
+  const details = [
+    ["Business Name", formData.businessName],
+    ["ABN", formData.abnNumber],
+    ["Entity Type", formData.entityType],
+    ["Date of Incorporation", formData.dateOfIncorporation || "N/A"],
+    ["Phone", formData.phone],
+    ["Mobile", formData.mobile],
+    ["Email", formData.email],
+    ["Website", formData.website],
+    ["Address", `${formData.streetNumber} ${formData.streetName}, ${formData.suburb}, ${formData.state} ${formData.postcode}`],
+  ];
+  details.forEach(([label, value]) => {
+    doc.text(`${label}: ${value || "-"}`, 50, y);
+    y += 16;
+  });
 
-    const lastPage = formDoc.getPage(formDoc.getPageCount() - 1);
-    lastPage.drawText(`Signed by: ${formData.signatureName}`, { x: 50, y: 60, size: 12 });
-    lastPage.drawText(`Date: ${formData.signatureDate}`, { x: 50, y: 45, size: 12 });
+  // ---------- Directors ----------
+  y += 10;
+  doc.setFont("helvetica", "bold");
+  doc.text("Directors", 40, y);
+  doc.setFont("helvetica", "normal");
+  y += 20;
+  formData.directors.slice(0, directorCount).forEach((d: any, i: number) => {
+    doc.text(`Director ${i + 1}: ${d.firstName} ${d.middleName} ${d.surname}`, 50, y); y += 16;
+    doc.text(`DOB: ${d.dob} | Licence: ${d.licenceNumber} (${d.licenceState})`, 50, y); y += 16;
+    doc.text(`Phone: ${d.phone} | Mobile: ${d.mobile}`, 50, y); y += 16;
+    doc.text(`Address: ${d.address}`, 50, y); y += 16;
+    doc.text(`Licence Expiry: ${d.licenceExpiry}`, 50, y); y += 20;
+  });
 
-    const mergedPdf = await formDoc.save();
-    return new Blob([mergedPdf], { type: "application/pdf" });
-  };
+  // ---------- Supporting Documents ----------
+  doc.setFont("helvetica", "bold");
+  doc.text("Supporting Documents", 40, y);
+  doc.setFont("helvetica", "normal");
+  y += 20;
+  const files = [
+    ["Business Registration / Trust Deed", formData.certificateFiles],
+    ["Bank Statement Header", formData.bankStatement],
+    ["Tax Invoice Template", formData.taxInvoiceTemplate],
+    ["Driver’s Licence (Front)", formData.directors[0]?.licenceFront],
+    ["Driver’s Licence (Back)", formData.directors[0]?.licencePhoto],
+  ];
+  files.forEach(([label, value]) => {
+    doc.text(`${label}: ${value ? "✅ Uploaded" : "❌ Missing"}`, 50, y);
+    y += 16;
+  });
+
+  // ---------- Solar Equipment ----------
+  y += 20;
+  doc.setFont("helvetica", "bold");
+  doc.text("Solar Equipment & Supplies", 40, y);
+  doc.setFont("helvetica", "normal");
+  y += 20;
+  doc.text(`Panels: ${(formData.solarPanels || []).join(", ") || "None"}`, 50, y); y += 16;
+  doc.text(`Inverters: ${(formData.inverters || []).join(", ") || "None"}`, 50, y); y += 16;
+  doc.text(`Batteries: ${(formData.batteries || []).join(", ") || "None"}`, 50, y); y += 20;
+
+  // ---------- Banking ----------
+  doc.setFont("helvetica", "bold");
+  doc.text("Banking Details", 40, y);
+  doc.setFont("helvetica", "normal");
+  y += 20;
+  doc.text(`Account Name: ${formData.accountName}`, 50, y); y += 16;
+  doc.text(`BSB: ${formData.bsb}`, 50, y); y += 16;
+  doc.text(`Account Number: ${formData.accountNumber}`, 50, y); y += 20;
+
+  // ---------- Terms ----------
+  doc.setFont("helvetica", "bold");
+  doc.text("Terms & Conditions", 40, y);
+  doc.setFont("helvetica", "normal");
+  y += 20;
+  const accepted = formData.tcsAccepted ? "✅ Accepted" : "❌ Not Accepted";
+  doc.text(`I agree to the ASLS Terms & Conditions: ${accepted}`, 50, y); y += 20;
+  doc.text(`Signed by: ${formData.signatureName}`, 50, y); y += 16;
+  doc.text(`Date: ${formData.signatureDate}`, 50, y); y += 30;
+
+  // Footer
+  doc.setFontSize(10);
+  doc.text(`Generated by ASLS Vendor Portal — ${new Date().toLocaleString()}`, 40, 780);
+
+  // ✅ Merge with Terms & Conditions PDF
+  const formBytes = doc.output("arraybuffer");
+  const termsUrl = "/terms-and-conditions.pdf";
+  const response = await fetch(termsUrl);
+  const termsBytes = await response.arrayBuffer();
+
+  const formDoc = await PDFDocument.load(formBytes);
+  const termsDoc = await PDFDocument.load(termsBytes);
+  const pages = await formDoc.copyPages(termsDoc, termsDoc.getPageIndices());
+  pages.forEach((p) => formDoc.addPage(p));
+
+  const finalPdf = await formDoc.save();
+  return new Blob([finalPdf], { type: "application/pdf" });
+};
 
   // -------------------- SUBMIT FORM --------------------
 const handleSubmit = async (e: React.FormEvent) => {
@@ -1007,57 +1079,70 @@ const handleSubmit = async (e: React.FormEvent) => {
             </div>
           </div>
 
-          {/* 📜 Terms & Signature */}
-          <div className="space-y-4 mt-10">
-            <h3 className="text-lg font-bold text-green-800">
-              Terms & Conditions
-            </h3>
-            <div className="bg-gray-100 rounded-lg p-4 border">
-              <p className="text-sm text-gray-600 mb-3">
-                By submitting this form, you agree to the ASLS Vendor Terms &
-                Conditions. Please ensure all information is accurate before
-                submitting.
-              </p>
-              <a
-                href="/terms-and-conditions.pdf"
-                target="_blank"
-                className="text-green-700 underline text-sm"
-              >
-                View full Terms & Conditions (PDF)
-              </a>
-            </div>
+ {/* 📜 Terms & Signature */}
+<div className="space-y-4 mt-10">
+  <h3 className="text-lg font-bold text-green-800">Terms & Conditions</h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Signature (Full Name)*
-                </label>
-                <input
-                  type="text"
-                  name="signatureName"
-                  placeholder="Type Full Name"
-                  value={formData.signatureName}
-                  onChange={handleChange}
-                  className="w-full border rounded-lg p-3"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Date Signed*
-                </label>
-                <input
-                  type="text"
-                  name="signatureDate"
-                  placeholder="DD/MM/YYYY"
-                  value={formData.signatureDate}
-                  onChange={handleChange}
-                  className="w-full border rounded-lg p-3"
-                  required
-                />
-              </div>
-            </div>
-          </div>
+  <div className="bg-gray-100 rounded-lg p-4 border">
+    <p className="text-sm text-gray-600 mb-3">
+      By submitting this form, you agree to the ASLS Vendor Terms & Conditions. Please ensure all information is accurate before submitting.
+    </p>
+    <a
+      href="/terms-and-conditions.pdf"
+      target="_blank"
+      className="text-green-700 underline text-sm"
+    >
+      View full Terms & Conditions (PDF)
+    </a>
+
+    {/* ✅ New Checkbox */}
+    <div className="mt-4 flex items-center">
+      <input
+        id="tcsAccepted"
+        type="checkbox"
+        name="tcsAccepted"
+        checked={formData.tcsAccepted}
+        onChange={handleChange}
+        required
+        className="w-5 h-5 text-green-700 border-gray-300 rounded focus:ring-green-500 accent-green-700"
+      />
+      <label htmlFor="tcsAccepted" className="ml-2 text-sm text-gray-700 font-medium">
+        I have read and agree to the Terms & Conditions
+      </label>
+    </div>
+  </div>
+
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+    <div>
+      <label className="block text-sm font-semibold text-gray-700 mb-1">
+        Signature (Full Name)*
+      </label>
+      <input
+        type="text"
+        name="signatureName"
+        placeholder="Type Full Name"
+        value={formData.signatureName}
+        onChange={handleChange}
+        className="w-full border rounded-lg p-3"
+        required
+      />
+    </div>
+    <div>
+      <label className="block text-sm font-semibold text-gray-700 mb-1">
+        Date Signed*
+      </label>
+      <input
+        type="text"
+        name="signatureDate"
+        placeholder="DD/MM/YYYY"
+        value={formData.signatureDate}
+        onChange={handleChange}
+        className="w-full border rounded-lg p-3"
+        required
+      />
+    </div>
+  </div>
+</div>
 
           {/* 🔘 Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 sm:justify-between pt-8 mt-6 border-t">
@@ -1090,18 +1175,23 @@ const handleSubmit = async (e: React.FormEvent) => {
 
               {/* Submit */}
               <button
-                type="submit"
-                disabled={loading}
-                className="px-8 py-3 bg-green-700 text-white font-semibold rounded-lg hover:bg-green-800 transition disabled:opacity-50"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="inline w-5 h-5 animate-spin mr-2" /> Submitting...
-                  </>
-                ) : (
-                  "Submit Application"
-                )}
-              </button>
+  type="submit"
+  disabled={loading || !formData.tcsAccepted}
+  className={`px-8 py-3 font-semibold rounded-lg transition disabled:opacity-50 ${
+    formData.tcsAccepted
+      ? "bg-green-700 text-white hover:bg-green-800"
+      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+  }`}
+>
+  {loading ? (
+    <>
+      <Loader2 className="inline w-5 h-5 animate-spin mr-2" /> Submitting...
+    </>
+  ) : (
+    "Submit Application"
+  )}
+</button>
+
             </div>
           </div>
         </form>

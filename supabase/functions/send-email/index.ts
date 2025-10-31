@@ -3,7 +3,27 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 
 console.log("📨 send-email function initialized");
 
+// Define allowed origins for security
+const allowedOrigins = [
+  "https://portal.asls.net.au",
+  "http://localhost:3000", // optional for local testing
+];
+
 serve(async (req) => {
+  const origin = req.headers.get("origin") || "";
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": allowedOrigins.includes(origin)
+      ? origin
+      : "",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+
+  // 🧠 Handle CORS preflight requests (important!)
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   try {
     const { to, subject, text, html } = await req.json();
 
@@ -51,13 +71,25 @@ serve(async (req) => {
     console.log("✅ Email sent successfully!");
     return new Response(
       JSON.stringify({ success: true, message: "Email sent successfully" }),
-      { headers: { "Content-Type": "application/json" }, status: 200 }
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+      }
     );
   } catch (err) {
     console.error("❌ send-email Error:", err);
     return new Response(
       JSON.stringify({ success: false, error: err.message }),
-      { headers: { "Content-Type": "application/json" }, status: 400 }
+      {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+      }
     );
   }
 });
