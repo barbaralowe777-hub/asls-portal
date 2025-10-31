@@ -9,6 +9,7 @@ import autoTable from "jspdf-autotable";
 import { Loader2, ArrowLeft, Camera, Save } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useSearchParams } from "react-router-dom";
+
 // ✅ Load Google Maps API script only once if not already loaded
 const loadGoogleMapsScript = (callback: () => void) => {
   if (window.google && window.google.maps) {
@@ -33,7 +34,6 @@ const loadGoogleMapsScript = (callback: () => void) => {
   document.body.appendChild(script);
 };
 
-
 console.log("✅ Loaded VendorIntakeForm.tsx (Final Production Build)");
 
 interface Props {
@@ -42,6 +42,9 @@ interface Props {
 }
 
 const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
+  const [searchParams] = useSearchParams();
+const draftId = searchParams.get("draftId");
+
   // -------------------- STATE SETUP --------------------
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -110,8 +113,33 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     batteries: [] as string[],
   });
 
-  const [searchParams] = useSearchParams();
-  const draftId = searchParams.get("id");
+  // ✅ Google Maps Autocomplete Hook — place it *after* your state declarations
+  useEffect(() => {
+    loadGoogleMapsScript(() => {
+      const businessInput = document.getElementById("businessAddress") as HTMLInputElement | null;
+      if (businessInput && !businessInput.hasAttribute("data-autocomplete-initialized")) {
+        const autocomplete = new google.maps.places.Autocomplete(businessInput, {
+          types: ["address"],
+          componentRestrictions: { country: "au" },
+        });
+
+        autocomplete.addListener("place_changed", () => {
+          const place = autocomplete.getPlace();
+          if (place && place.formatted_address) {
+            setFormData((prev: any) => ({
+              ...prev,
+              businessAddress: place.formatted_address,
+            }));
+          }
+        });
+
+        businessInput.setAttribute("data-autocomplete-initialized", "true");
+      }
+    });
+  }, []);
+
+  // ⬇️ your other logic, handlers, and return() come below
+
 
   // -------------------- LOAD EXISTING DRAFT --------------------
   useEffect(() => {
@@ -763,16 +791,20 @@ const handleSubmit = async (e: React.FormEvent) => {
 </div>
 
 {/* 🏠 Business Address */}
-<div className="mt-6">
+<div className="mt-6 sm:col-span-2">
   <label className="font-semibold text-gray-700">Business Address*</label>
   <input
-    id="businessAddress"
+    id="businessAddress" // ✅ Required for Google Maps Autocomplete
     type="text"
     name="businessAddress"
     placeholder="Start typing to search address..."
+    autoComplete="off" // ✅ Prevent browser autofill interference
     value={formData.businessAddress || ""}
     onChange={(e) =>
-      setFormData((prev: any) => ({ ...prev, businessAddress: e.target.value }))
+      setFormData((prev: any) => ({
+        ...prev,
+        businessAddress: e.target.value,
+      }))
     }
     className="w-full border rounded-lg p-3"
     required
