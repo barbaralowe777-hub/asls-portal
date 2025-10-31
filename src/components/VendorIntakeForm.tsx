@@ -466,22 +466,32 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
       const pdfUrl = pdfUrlData.publicUrl;
 
       // 3️⃣ Send Email
-      const emailPayload = {
-        to: ["john@worldmachine.com.au", "admin@asls.net.au"],
-        subject: `New Vendor Submission – ${formData.businessName}`,
-        html: `
-          <h2>New Vendor Intake Submission</h2>
-          <p><b>Business:</b> ${formData.businessName}</p>
-          <p><b>Email:</b> ${formData.email}</p>
-          <p><b>Phone:</b> ${formData.phone}</p>
-          <p><b>Website:</b> ${formData.website}</p>
-          <p><b>Address:</b> ${formData.businessAddress}</p>
-          <hr/>
-          <p><b>PDF Summary:</b> <a href="${pdfUrl}" target="_blank">View Vendor PDF</a></p>
-          <p>Supporting files and licence images are attached in the Supabase storage area.</p>
-          <p>Submitted via ASLS Vendor Portal.</p>
-        `,
-      };
+const emailPayload = {
+  to: ["john@worldmachine.com.au", "admin@asls.net.au"],
+  subject: `New Vendor Submission – ${formData.businessName}`,
+  text: `A new vendor intake form has been submitted by ${formData.businessName}.`,
+  html: `
+    <h2>New Vendor Intake Submission</h2>
+    <p><strong>Business Name:</strong> ${formData.businessName}</p>
+    <p><strong>Email:</strong> ${formData.email}</p>
+    <p><strong>Phone:</strong> ${formData.phone}</p>
+    <p><strong>Website:</strong> ${formData.website}</p>
+    <p><strong>Address:</strong> ${formData.businessAddress || "—"}</p>
+
+    <hr/>
+    <h3>📄 Documents</h3>
+    <p><a href="${pdfUrl}" target="_blank">View Vendor Summary PDF</a></p>
+    ${licenceUrl ? `<p><a href="${licenceUrl}" target="_blank">Driver Licence</a></p>` : ""}
+    ${
+      supportingUrls.length
+        ? `<p>Supporting Documents:<br>${supportingUrls
+            .map((url) => `<a href="${url}" target="_blank">${url}</a>`)
+            .join("<br>")}</p>`
+        : ""
+    }
+  `,
+};
+
 
       const res = await fetch(
         "https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email",
