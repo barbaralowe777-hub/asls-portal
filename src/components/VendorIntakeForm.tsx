@@ -458,100 +458,103 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
 
   // -------------------- SUBMIT FORM --------------------
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  e.preventDefault();
+  setLoading(true);
 
-    try {
-      // 1️⃣ Generate PDF
-      const { pdfBlob } = await generatePDF(formData);
-      const pdfFileName = `vendor_${formData.businessName || "form"}_${Date.now()}.pdf`;
+  try {
+    // 1️⃣ Generate & Upload PDF
+    const { pdfBlob } = await generatePDF(formData);
+    const pdfFileName = `vendor_${formData.businessName}_${Date.now()}.pdf`;
+    const { error: pdfError } = await supabase.storage
+      .from("uploads")
+      .upload(`vendor_forms/${pdfFileName}`, pdfBlob, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+    if (pdfError) throw pdfError;
 
-      // 2️⃣ Upload PDF to Supabase
-      const { error: pdfError } = await supabase.storage
-        .from("uploads")
-        .upload(`vendor_forms/${pdfFileName}`, pdfBlob, {
-          contentType: "application/pdf",
-          upsert: true,
-        });
-      if (pdfError) throw pdfError;
+    const { data: pdfUrlData } = supabase.storage
+      .from("uploads")
+      .getPublicUrl(`vendor_forms/${pdfFileName}`);
+    const pdfUrl = pdfUrlData.publicUrl;
 
-      const { data: pdfUrlData } = supabase.storage
-        .from("uploads")
-        .getPublicUrl(`vendor_forms/${pdfFileName}`);
-      const pdfUrl = pdfUrlData.publicUrl;
-// 2️⃣ Handle Licence URLs
-let licenceUrl = null;
-const licenceUrls: string[] = [];
+    // 2️⃣ Handle Licence URLs (your current correct version)
+    let licenceUrl = null;
+    const licenceUrls: string[] = [];
 
-for (const [index, director] of formData.directors.entries()) {
-  const frontUrl = director.licenceFrontUrl || null;
-  const backUrl = director.licencePhotoUrl || null;
+    for (const [index, director] of formData.directors.entries()) {
+      const frontUrl = director.licenceFrontUrl || null;
+      const backUrl = director.licencePhotoUrl || null;
 
-  if (frontUrl || backUrl) {
-    licenceUrls.push(
-      `<strong>Director ${index + 1}</strong><br>` +
-      `${frontUrl ? `Front: <a href="${frontUrl}" target="_blank">View</a><br>` : ""}` +
-      `${backUrl ? `Back: <a href="${backUrl}" target="_blank">View</a>` : ""}`
-    );
-  }
-}
-
-if (licenceUrls.length > 0) {
-  licenceUrl = licenceUrls.join("<hr>");
-}
-
-// 3️⃣ Send Email
-const emailPayload = {
-  to: ["john@worldmachine.com.au", "admin@asls.net.au"],
-  subject: `New Vendor Submission – ${formData.businessName}`,
-  text: `A new vendor intake form has been submitted by ${formData.businessName}.`,
-  html: `
-    <h2>New Vendor Intake Submission</h2>
-    <p><strong>Business Name:</strong> ${formData.businessName}</p>
-    <p><strong>Email:</strong> ${formData.email}</p>
-    <p><strong>Phone:</strong> ${formData.phone}</p>
-    <p><strong>Website:</strong> ${formData.website}</p>
-    <p><strong>Address:</strong> ${formData.businessAddress || "—"}</p>
-
-    <hr/>
-    <h3>📄 Documents</h3>
-    <p><a href="${pdfUrl}" target="_blank">View Vendor Summary PDF</a></p>
-    ${licenceUrl ? `<h4>Driver Licence(s):</h4><p>${licenceUrl}</p>` : ""}
-
-    ${
-      supportingUrls.length
-        ? `<p>Supporting Documents:<br>${supportingUrls
-            .map((url) => `<a href="${url}" target="_blank">${url}</a>`)
-            .join("<br>")}</p>`
-        : ""
+      if (frontUrl || backUrl) {
+        licenceUrls.push(
+          `<strong>Director ${index + 1}</strong><br>` +
+            `${frontUrl ? `Front: <a href="${frontUrl}" target="_blank">View</a><br>` : ""}` +
+            `${backUrl ? `Back: <a href="${backUrl}" target="_blank">View</a>` : ""}`
+        );
+      }
     }
-  `,
+
+    if (licenceUrls.length > 0) {
+      licenceUrl = licenceUrls.join("<hr>");
+    }
+
+// ✅ Collect supporting document URLs (if any exist)
+const supportingUrls =
+  formData.supportingDocuments?.map((doc: any) => doc.url || doc.publicUrl).filter(Boolean) || [];
+
+
+
+    // 4️⃣ Send Email
+    const emailPayload = {
+      to: ["john@worldmachine.com.au", "admin@asls.net.au"],
+      subject: `New Vendor Submission – ${formData.businessName}`,
+      text: `A new vendor intake form has been submitted by ${formData.businessName}.`,
+      html: `
+        <h2>New Vendor Intake Submission</h2>
+        <p><strong>Business Name:</strong> ${formData.businessName}</p>
+        <p><strong>Email:</strong> ${formData.email}</p>
+        <p><strong>Phone:</strong> ${formData.phone}</p>
+        <p><strong>Website:</strong> ${formData.website}</p>
+        <p><strong>Address:</strong> ${formData.businessAddress || "—"}</p>
+
+        <hr/>
+        <h3>📄 Documents</h3>
+        <p><a href="${pdfUrl}" target="_blank">View Vendor Summary PDF</a></p>
+        ${licenceUrl ? `<h4>Driver Licence(s):</h4><p>${licenceUrl}</p>` : ""}
+        ${
+          supportingUrls.length
+            ? `<p>Supporting Documents:<br>${supportingUrls
+                .map((url) => `<a href="${url}" target="_blank">${url}</a>`)
+                .join("<br>")}</p>`
+            : ""
+        }
+      `,
+    };
+
+    const res = await fetch(
+      "https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify(emailPayload),
+      }
+    );
+
+    if (!res.ok) throw new Error("Email send failed");
+
+    alert("✅ Submission sent successfully!");
+  } catch (error) {
+    console.error("❌ Submission Error:", error);
+    alert(`❌ Submission Error: ${error.message}`);
+  } finally {
+    setLoading(false);
+  }
 };
 
-
-
-      const res = await fetch(
-        "https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify(emailPayload),
-        }
-      );
-
-      if (!res.ok) throw new Error("Email failed to send");
-
-      alert("✅ Vendor Intake Form submitted successfully!");
-    } catch (err: any) {
-      console.error("❌ Submission Error:", err);
-      alert(`❌ ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
   // -------------------- FORM UI --------------------
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-3 sm:px-6">
