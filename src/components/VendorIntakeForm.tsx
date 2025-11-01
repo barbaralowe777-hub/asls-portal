@@ -26,9 +26,8 @@ const loadGoogleMapsScript = (callback: () => void) => {
 
   const script = document.createElement("script");
   script.id = "googleMaps";
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${
-    import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-  }&libraries=places`;
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+    }&libraries=places`;
   script.async = true;
   script.defer = true;
   script.onload = callback;
@@ -255,35 +254,35 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     }
   };
 
- const handleDirectorFileUpload = async (e: any, dirIndex: number, field: string) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+  const handleDirectorFileUpload = async (e: any, dirIndex: number, field: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  try {
-    // Upload to Supabase Storage
-    const filePath = `vendor_docs/director_${dirIndex}_${field}_${Date.now()}_${file.name}`;
-    const { data, error } = await supabase.storage.from("uploads").upload(filePath, file);
+    try {
+      // Upload to Supabase Storage
+      const filePath = `vendor_docs/director_${dirIndex}_${field}_${Date.now()}_${file.name}`;
+      const { data, error } = await supabase.storage.from("uploads").upload(filePath, file);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const { data: publicUrlData } = supabase.storage
-      .from("uploads")
-      .getPublicUrl(filePath);
-    const fileUrl = publicUrlData.publicUrl;
+      const { data: publicUrlData } = supabase.storage
+        .from("uploads")
+        .getPublicUrl(filePath);
+      const fileUrl = publicUrlData.publicUrl;
 
-    // Update formData with both file and its URL
-    setFormData((prev: any) => {
-      const directors = [...prev.directors];
-      directors[dirIndex - 1][field] = file; // store the file
-      directors[dirIndex - 1][`${field}Url`] = fileUrl; // store the public URL
-      return { ...prev, directors };
-    });
+      // Update formData with both file and its URL
+      setFormData((prev: any) => {
+        const directors = [...prev.directors];
+        directors[dirIndex - 1][field] = file; // store the file
+        directors[dirIndex - 1][`${field}Url`] = fileUrl; // store the public URL
+        return { ...prev, directors };
+      });
 
-    console.log(`✅ Uploaded ${field} for Director ${dirIndex}:`, fileUrl);
-  } catch (err) {
-    console.error("❌ Director upload failed:", err);
-  }
-};
+      console.log(`✅ Uploaded ${field} for Director ${dirIndex}:`, fileUrl);
+    } catch (err) {
+      console.error("❌ Director upload failed:", err);
+    }
+  };
 
 
   // -------------------- SAVE FOR LATER --------------------
@@ -313,167 +312,167 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
       setSaving(false);
     }
   };
-// -------------------- PDF GENERATION --------------------
-const generatePDF = async (formData: any) => {
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
+  // -------------------- PDF GENERATION --------------------
+  const generatePDF = async (formData: any) => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
 
-  // 🖼️ Logos
-  const aslsLogo = await fetch("/ASLS-logo.png").then((res) => res.blob());
-  const wmmLogo = await fetch("/World-Machine-Money-Logo.png").then((res) => res.blob());
-  const aslsImg = await readAsBase64(aslsLogo);
-  const wmmImg = await readAsBase64(wmmLogo);
+    // 🖼️ Logos
+    const aslsLogo = await fetch("/ASLS-logo.png").then((res) => res.blob());
+    const wmmLogo = await fetch("/World-Machine-Money-Logo.png").then((res) => res.blob());
+    const aslsImg = await readAsBase64(aslsLogo);
+    const wmmImg = await readAsBase64(wmmLogo);
 
-  const logoWidth = 40;
-  const spacing = 15;
-  const totalWidth = logoWidth * 2 + spacing;
-  const startX = (pageWidth - totalWidth) / 2;
+    const logoWidth = 40;
+    const spacing = 15;
+    const totalWidth = logoWidth * 2 + spacing;
+    const startX = (pageWidth - totalWidth) / 2;
 
-  doc.addImage(aslsImg, "PNG", startX, 10, logoWidth, 20);
-  doc.addImage(wmmImg, "PNG", startX + logoWidth + spacing, 10, logoWidth, 20);
+    doc.addImage(aslsImg, "PNG", startX, 10, logoWidth, 20);
+    doc.addImage(wmmImg, "PNG", startX + logoWidth + spacing, 10, logoWidth, 20);
 
-  doc.setFontSize(16);
-  doc.text("ASLS Vendor Intake Form", pageWidth / 2, 40, { align: "center" });
+    doc.setFontSize(16);
+    doc.text("ASLS Vendor Intake Form", pageWidth / 2, 40, { align: "center" });
 
-  // 🧾 Business Details
-  doc.setFontSize(14);
-  doc.text("Business Details", 14, 55);
-  autoTable(doc, {
-    startY: 60,
-    head: [["Field", "Information"]],
-    body: [
-      ["ABN Number", formData.abnNumber || ""],
-      ["Business Name", formData.businessName || ""],
-      ["Entity Type", formData.entityType || ""],
-      ["Phone", formData.phone || ""],
-      ["Mobile", formData.mobile || ""],
-      ["Email", formData.email || ""],
-      ["Website", formData.website || ""],
-      ["Business Address", formData.businessAddress || ""],
-      ["Date of Incorporation", formData.dateOfIncorporation || ""],
-    ],
-    styles: { fontSize: 10 },
-    headStyles: { fillColor: [60, 179, 113] },
-  });
-
-  // 👥 Directors
-  const directors = formData.directors || [];
-  doc.setFontSize(14);
-  doc.text("Directors", 14, doc.lastAutoTable.finalY + 10);
-  autoTable(doc, {
-    startY: doc.lastAutoTable.finalY + 15,
-    head: [["Name", "Phone", "Mobile", "Address", "Licence #", "State", "Expiry"]],
-    body: directors.map((d: any) => [
-      `${d.firstName} ${d.middleName || ""} ${d.surname}`.trim(),
-      d.phone || "",
-      d.mobile || "",
-      d.address || "—",
-      d.licenceNumber || "",
-      d.licenceState || "",
-      d.licenceExpiry || "",
-    ]),
-    styles: { fontSize: 10 },
-    headStyles: { fillColor: [100, 149, 237] },
-  });
-
-  // 📎 Uploaded Docs
-  doc.setFontSize(14);
-  doc.text("Uploaded Documents", 14, doc.lastAutoTable.finalY + 10);
-  autoTable(doc, {
-    startY: doc.lastAutoTable.finalY + 15,
-    head: [["Document Type", "File URL / Status"]],
-    body: [
-      ["Certificate / Trust Deed", formData.certificateFiles ? "Uploaded ✅" : "Not uploaded"],
-      ["Bank Statement", formData.bankStatement ? "Uploaded ✅" : "Not uploaded"],
-      ["Tax Invoice Template", formData.taxInvoiceTemplate ? "Uploaded ✅" : "Not uploaded"],
-    ],
-    styles: { fontSize: 10 },
-    headStyles: { fillColor: [120, 120, 120] },
-  });
-
-  // 📎 Supporting Documents
-  if (formData.supportingDocuments?.length) {
+    // 🧾 Business Details
     doc.setFontSize(14);
-    doc.text("Supporting Documents", 14, doc.lastAutoTable.finalY + 10);
+    doc.text("Business Details", 14, 55);
+    autoTable(doc, {
+      startY: 60,
+      head: [["Field", "Information"]],
+      body: [
+        ["ABN Number", formData.abnNumber || ""],
+        ["Business Name", formData.businessName || ""],
+        ["Entity Type", formData.entityType || ""],
+        ["Phone", formData.phone || ""],
+        ["Mobile", formData.mobile || ""],
+        ["Email", formData.email || ""],
+        ["Website", formData.website || ""],
+        ["Business Address", formData.businessAddress || ""],
+        ["Date of Incorporation", formData.dateOfIncorporation || ""],
+      ],
+      styles: { fontSize: 10 },
+      headStyles: { fillColor: [60, 179, 113] },
+    });
+
+    // 👥 Directors
+    const directors = formData.directors || [];
+    doc.setFontSize(14);
+    doc.text("Directors", 14, doc.lastAutoTable.finalY + 10);
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 15,
-      body: formData.supportingDocuments.map((docItem: any, i: number) => [
-        `${i + 1}. ${docItem.name || "Document"}`,
-        docItem.url || docItem.publicUrl || "Uploaded ✅",
+      head: [["Name", "Phone", "Mobile", "Address", "Licence #", "State", "Expiry"]],
+      body: directors.map((d: any) => [
+        `${d.firstName} ${d.middleName || ""} ${d.surname}`.trim(),
+        d.phone || "",
+        d.mobile || "",
+        d.address || "—",
+        d.licenceNumber || "",
+        d.licenceState || "",
+        d.licenceExpiry || "",
       ]),
       styles: { fontSize: 10 },
+      headStyles: { fillColor: [100, 149, 237] },
     });
-  }
 
-  // ⚡ Solar Equipment
-  const listToString = (list: string[]) => (list?.length ? list.join(", ") : "None");
-  doc.setFontSize(14);
-  doc.text("Solar Equipment", 14, doc.lastAutoTable.finalY + 10);
-  autoTable(doc, {
-    startY: doc.lastAutoTable.finalY + 15,
-    body: [
-      ["Panels", listToString(formData.solarPanels)],
-      ["Inverters", listToString(formData.inverters)],
-      ["Batteries", listToString(formData.batteries)],
-    ],
-    styles: { fontSize: 10 },
-  });
+    // 📎 Uploaded Docs
+    doc.setFontSize(14);
+    doc.text("Uploaded Documents", 14, doc.lastAutoTable.finalY + 10);
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 15,
+      head: [["Document Type", "File URL / Status"]],
+      body: [
+        ["Certificate / Trust Deed", formData.certificateFiles ? "Uploaded ✅" : "Not uploaded"],
+        ["Bank Statement", formData.bankStatement ? "Uploaded ✅" : "Not uploaded"],
+        ["Tax Invoice Template", formData.taxInvoiceTemplate ? "Uploaded ✅" : "Not uploaded"],
+      ],
+      styles: { fontSize: 10 },
+      headStyles: { fillColor: [120, 120, 120] },
+    });
 
-  // 💳 Banking
-  doc.setFontSize(14);
-  doc.text("Banking Details", 14, doc.lastAutoTable.finalY + 10);
-  autoTable(doc, {
-    startY: doc.lastAutoTable.finalY + 15,
-    body: [
-      ["Account Name", formData.accountName || ""],
-      ["BSB", formData.bsb || ""],
-      ["Account Number", formData.accountNumber || ""],
-    ],
-    styles: { fontSize: 10 },
-  });
+    // 📎 Supporting Documents
+    if (formData.supportingDocuments?.length) {
+      doc.setFontSize(14);
+      doc.text("Supporting Documents", 14, doc.lastAutoTable.finalY + 10);
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY + 15,
+        body: formData.supportingDocuments.map((docItem: any, i: number) => [
+          `${i + 1}. ${docItem.name || "Document"}`,
+          docItem.url || docItem.publicUrl || "Uploaded ✅",
+        ]),
+        styles: { fontSize: 10 },
+      });
+    }
 
-  // 📜 Agreement
-  doc.setFontSize(14);
-  doc.text("Agreement", 14, doc.lastAutoTable.finalY + 10);
-  autoTable(doc, {
-    startY: doc.lastAutoTable.finalY + 15,
-    body: [
-      ["Terms Accepted", formData.tcsAccepted ? "✅ Yes" : "❌ No"],
-      ["Signed By", formData.signatureName || ""],
-      ["Date Signed", formData.signatureDate || ""],
-    ],
-    styles: { fontSize: 10 },
-  });
+    // ⚡ Solar Equipment
+    const listToString = (list: string[]) => (list?.length ? list.join(", ") : "None");
+    doc.setFontSize(14);
+    doc.text("Solar Equipment", 14, doc.lastAutoTable.finalY + 10);
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 15,
+      body: [
+        ["Panels", listToString(formData.solarPanels)],
+        ["Inverters", listToString(formData.inverters)],
+        ["Batteries", listToString(formData.batteries)],
+      ],
+      styles: { fontSize: 10 },
+    });
 
-  // ✍️ Signature on last page
-  doc.setFontSize(12);
-  doc.text(`Signed by: ${formData.signatureName || "—"}`, 14, doc.lastAutoTable.finalY + 20);
-  doc.text(`Date: ${new Date().toLocaleDateString()}`, 150, doc.lastAutoTable.finalY + 20);
+    // 💳 Banking
+    doc.setFontSize(14);
+    doc.text("Banking Details", 14, doc.lastAutoTable.finalY + 10);
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 15,
+      body: [
+        ["Account Name", formData.accountName || ""],
+        ["BSB", formData.bsb || ""],
+        ["Account Number", formData.accountNumber || ""],
+      ],
+      styles: { fontSize: 10 },
+    });
 
-  // 📎 Append Terms & Conditions PDF
-  try {
-    const termsPdf = await fetch("/terms-and-conditions.pdf");
-    const termsBlob = await termsPdf.blob();
-    const termsArrayBuffer = await termsBlob.arrayBuffer();
+    // 📜 Agreement
+    doc.setFontSize(14);
+    doc.text("Agreement", 14, doc.lastAutoTable.finalY + 10);
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 15,
+      body: [
+        ["Terms Accepted", formData.tcsAccepted ? "✅ Yes" : "❌ No"],
+        ["Signed By", formData.signatureName || ""],
+        ["Date Signed", formData.signatureDate || ""],
+      ],
+      styles: { fontSize: 10 },
+    });
 
-    const currentPdfBytes = doc.output("arraybuffer");
-    const mergedPdf = await PDFLib.PDFDocument.create();
-    const mainDoc = await PDFLib.PDFDocument.load(currentPdfBytes);
-    const termsDoc = await PDFLib.PDFDocument.load(termsArrayBuffer);
+    // ✍️ Signature on last page
+    doc.setFontSize(12);
+    doc.text(`Signed by: ${formData.signatureName || "—"}`, 14, doc.lastAutoTable.finalY + 20);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 150, doc.lastAutoTable.finalY + 20);
 
-    const [mainPages] = await mergedPdf.copyPages(mainDoc, mainDoc.getPageIndices());
-    mainPages.forEach((p) => mergedPdf.addPage(p));
-    const [termsPages] = await mergedPdf.copyPages(termsDoc, termsDoc.getPageIndices());
-    termsPages.forEach((p) => mergedPdf.addPage(p));
+    // 📎 Append Terms & Conditions PDF
+    try {
+      const termsPdf = await fetch("/terms-and-conditions.pdf");
+      const termsBlob = await termsPdf.blob();
+      const termsArrayBuffer = await termsBlob.arrayBuffer();
 
-    const finalBytes = await mergedPdf.save();
-    return { pdfBlob: new Blob([finalBytes], { type: "application/pdf" }) };
-  } catch (err) {
-    console.warn("Could not append T&Cs:", err);
-    const pdfBlob = doc.output("blob");
-    return { pdfBlob };
-  }
-};
+      const currentPdfBytes = doc.output("arraybuffer");
+      const mergedPdf = await PDFLib.PDFDocument.create();
+      const mainDoc = await PDFLib.PDFDocument.load(currentPdfBytes);
+      const termsDoc = await PDFLib.PDFDocument.load(termsArrayBuffer);
+
+      const [mainPages] = await mergedPdf.copyPages(mainDoc, mainDoc.getPageIndices());
+      mainPages.forEach((p) => mergedPdf.addPage(p));
+      const [termsPages] = await mergedPdf.copyPages(termsDoc, termsDoc.getPageIndices());
+      termsPages.forEach((p) => mergedPdf.addPage(p));
+
+      const finalBytes = await mergedPdf.save();
+      return { pdfBlob: new Blob([finalBytes], { type: "application/pdf" }) };
+    } catch (err) {
+      console.warn("Could not append T&Cs:", err);
+      const pdfBlob = doc.output("blob");
+      return { pdfBlob };
+    }
+  };
 
 
   // -------------------- BLOB HELPERS --------------------
@@ -495,59 +494,59 @@ const generatePDF = async (formData: any) => {
 
   // -------------------- SUBMIT FORM --------------------
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setLoading(true);
+    e.preventDefault();
+    setLoading(true);
 
-  try {
-    // 1️⃣ Generate & Upload PDF
-    const { pdfBlob } = await generatePDF(formData);
-    const pdfFileName = `vendor_${formData.businessName}_${Date.now()}.pdf`;
-    const { error: pdfError } = await supabase.storage
-      .from("uploads")
-      .upload(`vendor_forms/${pdfFileName}`, pdfBlob, {
-        contentType: "application/pdf",
-        upsert: true,
-      });
-    if (pdfError) throw pdfError;
+    try {
+      // 1️⃣ Generate & Upload PDF
+      const { pdfBlob } = await generatePDF(formData);
+      const pdfFileName = `vendor_${formData.businessName}_${Date.now()}.pdf`;
+      const { error: pdfError } = await supabase.storage
+        .from("uploads")
+        .upload(`vendor_forms/${pdfFileName}`, pdfBlob, {
+          contentType: "application/pdf",
+          upsert: true,
+        });
+      if (pdfError) throw pdfError;
 
-    const { data: pdfUrlData } = supabase.storage
-      .from("uploads")
-      .getPublicUrl(`vendor_forms/${pdfFileName}`);
-    const pdfUrl = pdfUrlData.publicUrl;
+      const { data: pdfUrlData } = supabase.storage
+        .from("uploads")
+        .getPublicUrl(`vendor_forms/${pdfFileName}`);
+      const pdfUrl = pdfUrlData.publicUrl;
 
-    // 2️⃣ Handle Licence URLs (your current correct version)
-    let licenceUrl = null;
-    const licenceUrls: string[] = [];
+      // 2️⃣ Handle Licence URLs (your current correct version)
+      let licenceUrl = null;
+      const licenceUrls: string[] = [];
 
-    for (const [index, director] of formData.directors.entries()) {
-      const frontUrl = director.licenceFrontUrl || null;
-      const backUrl = director.licencePhotoUrl || null;
+      for (const [index, director] of formData.directors.entries()) {
+        const frontUrl = director.licenceFrontUrl || null;
+        const backUrl = director.licencePhotoUrl || null;
 
-      if (frontUrl || backUrl) {
-        licenceUrls.push(
-          `<strong>Director ${index + 1}</strong><br>` +
+        if (frontUrl || backUrl) {
+          licenceUrls.push(
+            `<strong>Director ${index + 1}</strong><br>` +
             `${frontUrl ? `Front: <a href="${frontUrl}" target="_blank">View</a><br>` : ""}` +
             `${backUrl ? `Back: <a href="${backUrl}" target="_blank">View</a>` : ""}`
-        );
+          );
+        }
       }
-    }
 
-    if (licenceUrls.length > 0) {
-      licenceUrl = licenceUrls.join("<hr>");
-    }
+      if (licenceUrls.length > 0) {
+        licenceUrl = licenceUrls.join("<hr>");
+      }
 
-// ✅ Collect supporting document URLs (if any exist)
-const supportingUrls =
-  formData.supportingDocuments?.map((doc: any) => doc.url || doc.publicUrl).filter(Boolean) || [];
-
+      // ✅ Collect supporting document URLs (if any exist)
+      const supportingUrls =
+        formData.supportingDocuments?.map((doc: any) => doc.url || doc.publicUrl).filter(Boolean) || [];
 
 
-    // 4️⃣ Send Email
-    const emailPayload = {
-      to: ["john@worldmachine.com.au", "admin@asls.net.au"],
-      subject: `New Vendor Submission – ${formData.businessName}`,
-      text: `A new vendor intake form has been submitted by ${formData.businessName}.`,
-      html: `
+
+      // 4️⃣ Send Email
+      const emailPayload = {
+        to: ["john@worldmachine.com.au", "admin@asls.net.au"],
+        subject: `New Vendor Submission – ${formData.businessName}`,
+        text: `A new vendor intake form has been submitted by ${formData.businessName}.`,
+        html: `
         <h2>New Vendor Intake Submission</h2>
         <p><strong>Business Name:</strong> ${formData.businessName}</p>
         <p><strong>Email:</strong> ${formData.email}</p>
@@ -559,38 +558,37 @@ const supportingUrls =
         <h3>📄 Documents</h3>
         <p><a href="${pdfUrl}" target="_blank">View Vendor Summary PDF</a></p>
         ${licenceUrl ? `<h4>Driver Licence(s):</h4><p>${licenceUrl}</p>` : ""}
-        ${
-          supportingUrls.length
+        ${supportingUrls.length
             ? `<p>Supporting Documents:<br>${supportingUrls
-                .map((url) => `<a href="${url}" target="_blank">${url}</a>`)
-                .join("<br>")}</p>`
+              .map((url) => `<a href="${url}" target="_blank">${url}</a>`)
+              .join("<br>")}</p>`
             : ""
-        }
+          }
       `,
-    };
+      };
 
-    const res = await fetch(
-      "https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify(emailPayload),
-      }
-    );
+      const res = await fetch(
+        "https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify(emailPayload),
+        }
+      );
 
-    if (!res.ok) throw new Error("Email send failed");
+      if (!res.ok) throw new Error("Email send failed");
 
-    alert("✅ Submission sent successfully!");
-  } catch (error) {
-    console.error("❌ Submission Error:", error);
-    alert(`❌ Submission Error: ${error.message}`);
-  } finally {
-    setLoading(false);
-  }
-};
+      alert("✅ Submission sent successfully!");
+    } catch (error) {
+      console.error("❌ Submission Error:", error);
+      alert(`❌ Submission Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // -------------------- FORM UI --------------------
   return (
@@ -706,13 +704,14 @@ const supportingUrls =
             <div>
               <label className="font-semibold text-gray-700">Website*</label>
               <input
-  type="text"
-  name="website"
-  placeholder="e.g. www.businessname.com.au"
-  value={formData.website}
-  onChange={(e) => handleChange("website", e.target.value)}
-  className="w-full border-gray-300 rounded-lg p-2"
-/>
+                type="text"
+                name="website"
+                placeholder="e.g. www.businessname.com.au"
+                value={formData.website}
+                onChange={handleChange}  // ✅ simple and consistent
+                className="w-full border-gray-300 rounded-lg p-2"
+              />
+
 
             </div>
           </div>
@@ -1120,11 +1119,10 @@ const supportingUrls =
               <button
                 type="submit"
                 disabled={loading || !formData.tcsAccepted}
-                className={`px-8 py-3 font-semibold rounded-lg transition disabled:opacity-50 ${
-                  formData.tcsAccepted
-                    ? "bg-green-700 text-white hover:bg-green-800"
-                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                }`}
+                className={`px-8 py-3 font-semibold rounded-lg transition disabled:opacity-50 ${formData.tcsAccepted
+                  ? "bg-green-700 text-white hover:bg-green-800"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  }`}
               >
                 {loading ? (
                   <>
