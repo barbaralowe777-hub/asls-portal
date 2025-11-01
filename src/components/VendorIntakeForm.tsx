@@ -313,166 +313,177 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
     }
   };
   // -------------------- PDF GENERATION --------------------
-  const generatePDF = async (formData: any) => {
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
+const generatePDF = async (formData: any) => {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
 
-    // 🖼️ Logos
-    const aslsLogo = await fetch("/ASLS-logo.png").then((res) => res.blob());
-    const wmmLogo = await fetch("/World-Machine-Money-Logo.png").then((res) => res.blob());
-    const aslsImg = await readAsBase64(aslsLogo);
-    const wmmImg = await readAsBase64(wmmLogo);
+  // 🖼️ Logos
+  const aslsLogo = await fetch("/ASLS-logo.png").then((res) => res.blob());
+  const wmmLogo = await fetch("/World-Machine-Money-Logo.png").then((res) => res.blob());
+  const aslsImg = await readAsBase64(aslsLogo);
+  const wmmImg = await readAsBase64(wmmLogo);
 
-    const logoWidth = 40;
-    const spacing = 15;
-    const totalWidth = logoWidth * 2 + spacing;
-    const startX = (pageWidth - totalWidth) / 2;
+  const logoWidth = 40;
+  const spacing = 15;
+  const totalWidth = logoWidth * 2 + spacing;
+  const startX = (pageWidth - totalWidth) / 2;
 
-    doc.addImage(aslsImg, "PNG", startX, 10, logoWidth, 20);
-    doc.addImage(wmmImg, "PNG", startX + logoWidth + spacing, 10, logoWidth, 20);
+  doc.addImage(aslsImg, "PNG", startX, 10, logoWidth, 20);
+  doc.addImage(wmmImg, "PNG", startX + logoWidth + spacing, 10, logoWidth, 20);
 
-    doc.setFontSize(16);
-    doc.text("ASLS Vendor Intake Form", pageWidth / 2, 40, { align: "center" });
+  doc.setFontSize(16);
+  doc.text("ASLS Vendor Intake Form", pageWidth / 2, 40, { align: "center" });
 
-    // 🧾 Business Details
-    doc.setFontSize(14);
-    doc.text("Business Details", 14, 55);
-    autoTable(doc, {
-      startY: 60,
-      head: [["Field", "Information"]],
-      body: [
-        ["ABN Number", formData.abnNumber || ""],
-        ["Business Name", formData.businessName || ""],
-        ["Entity Type", formData.entityType || ""],
-        ["Phone", formData.phone || ""],
-        ["Mobile", formData.mobile || ""],
-        ["Email", formData.email || ""],
-        ["Website", formData.website || ""],
-        ["Business Address", formData.businessAddress || ""],
-        ["Date of Incorporation", formData.dateOfIncorporation || ""],
-      ],
-      styles: { fontSize: 10 },
-      headStyles: { fillColor: [60, 179, 113] },
-    });
+  // 🧾 Business Details
+  doc.setFontSize(14);
+  doc.text("Business Details", 14, 55);
+  autoTable(doc, {
+    startY: 60,
+    head: [["Field", "Information"]],
+    body: [
+      ["ABN Number", formData.abnNumber || ""],
+      ["Business Name", formData.businessName || ""],
+      ["Entity Type", formData.entityType || ""],
+      ["Phone", formData.phone || ""],
+      ["Mobile", formData.mobile || ""],
+      ["Email", formData.email || ""],
+      ["Website", formData.website || ""],
+      ["Business Address", formData.businessAddress || ""],
+      ["Date of Incorporation", formData.dateOfIncorporation || ""],
+    ],
+    styles: { fontSize: 10 },
+    headStyles: { fillColor: [60, 179, 113] },
+  });
 
-    // 👥 Directors
-    const directors = formData.directors || [];
-    doc.setFontSize(14);
-    doc.text("Directors", 14, doc.lastAutoTable.finalY + 10);
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 15,
-      head: [["Name", "Phone", "Mobile", "Address", "Licence #", "State", "Expiry"]],
-      body: directors.map((d: any) => [
-        `${d.firstName} ${d.middleName || ""} ${d.surname}`.trim(),
-        d.phone || "",
-        d.mobile || "",
-        d.address || "—",
-        d.licenceNumber || "",
-        d.licenceState || "",
-        d.licenceExpiry || "",
-      ]),
-      styles: { fontSize: 10 },
-      headStyles: { fillColor: [100, 149, 237] },
-    });
+  // 👥 Directors
+  const directors = formData.directors || [];
+  doc.setFontSize(14);
+  doc.text("Directors", 14, doc.lastAutoTable.finalY + 10);
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 15,
+    head: [["Name", "Phone", "Mobile", "Address", "Licence #", "State", "Expiry"]],
+    body: directors.map((d: any) => [
+      `${d.firstName} ${d.middleName} ${d.surname}`.trim(),
+      d.phone || "",
+      d.mobile || "",
+      d.address || "",
+      d.licenceNumber || "",
+      d.licenceState || "",
+      d.licenceExpiry || "",
+    ]),
+    styles: { fontSize: 10 },
+    headStyles: { fillColor: [100, 149, 237] },
+  });
 
-    // 📎 Uploaded Docs
-    doc.setFontSize(14);
-    doc.text("Uploaded Documents", 14, doc.lastAutoTable.finalY + 10);
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 15,
-      head: [["Document Type", "File URL / Status"]],
-      body: [
-        ["Certificate / Trust Deed", formData.certificateFiles ? "Uploaded ✅" : "Not uploaded"],
-        ["Bank Statement", formData.bankStatement ? "Uploaded ✅" : "Not uploaded"],
-        ["Tax Invoice Template", formData.taxInvoiceTemplate ? "Uploaded ✅" : "Not uploaded"],
-      ],
-      styles: { fontSize: 10 },
-      headStyles: { fillColor: [120, 120, 120] },
-    });
+  // 📎 Uploaded Docs (with clickable links)
+  doc.setFontSize(14);
+  doc.text("Uploaded Documents", 14, doc.lastAutoTable.finalY + 10);
 
-    // 📎 Supporting Documents
-    if (formData.supportingDocuments?.length) {
-      doc.setFontSize(14);
-      doc.text("Supporting Documents", 14, doc.lastAutoTable.finalY + 10);
-      autoTable(doc, {
-        startY: doc.lastAutoTable.finalY + 15,
-        body: formData.supportingDocuments.map((docItem: any, i: number) => [
-          `${i + 1}. ${docItem.name || "Document"}`,
-          docItem.url || docItem.publicUrl || "Uploaded ✅",
-        ]),
-        styles: { fontSize: 10 },
-      });
-    }
+  const supportingDocs: [string, string][] = [
+    [
+      "Certificate / Trust Deed",
+      formData.certificateFiles
+        ? `View: ${formData.certificateFiles}`
+        : "❌ Not uploaded",
+    ],
+    [
+      "Bank Statement",
+      formData.bankStatement ? `View: ${formData.bankStatement}` : "❌ Not uploaded",
+    ],
+    [
+      "Tax Invoice Template",
+      formData.taxInvoiceTemplate
+        ? `View: ${formData.taxInvoiceTemplate}`
+        : "❌ Not uploaded",
+    ],
+  ];
 
-    // ⚡ Solar Equipment
-    const listToString = (list: string[]) => (list?.length ? list.join(", ") : "None");
-    doc.setFontSize(14);
-    doc.text("Solar Equipment", 14, doc.lastAutoTable.finalY + 10);
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 15,
-      body: [
-        ["Panels", listToString(formData.solarPanels)],
-        ["Inverters", listToString(formData.inverters)],
-        ["Batteries", listToString(formData.batteries)],
-      ],
-      styles: { fontSize: 10 },
-    });
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 15,
+    head: [["Document Type", "File URL"]],
+    body: supportingDocs,
+    styles: { fontSize: 10, cellWidth: "wrap" },
+    headStyles: { fillColor: [120, 120, 120] },
+    didDrawCell: (data) => {
+      // make URLs clickable
+      if (data.column.index === 1 && data.cell.raw?.startsWith("View:")) {
+        const url = data.cell.raw.replace("View: ", "").trim();
+        doc.setTextColor(0, 0, 255);
+        doc.textWithLink("Open Document", data.cell.x + 2, data.cell.y + 6, { url });
+        doc.setTextColor(0, 0, 0);
+      }
+    },
+  });
 
-    // 💳 Banking
-    doc.setFontSize(14);
-    doc.text("Banking Details", 14, doc.lastAutoTable.finalY + 10);
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 15,
-      body: [
-        ["Account Name", formData.accountName || ""],
-        ["BSB", formData.bsb || ""],
-        ["Account Number", formData.accountNumber || ""],
-      ],
-      styles: { fontSize: 10 },
-    });
+  // ⚡ Solar Equipment
+  const listToString = (list: string[]) => (list?.length ? list.join(", ") : "None");
+  doc.setFontSize(14);
+  doc.text("Solar Equipment", 14, doc.lastAutoTable.finalY + 10);
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 15,
+    body: [
+      ["Panels", listToString(formData.solarPanels)],
+      ["Inverters", listToString(formData.inverters)],
+      ["Batteries", listToString(formData.batteries)],
+    ],
+    styles: { fontSize: 10 },
+  });
 
-    // 📜 Agreement
-    doc.setFontSize(14);
-    doc.text("Agreement", 14, doc.lastAutoTable.finalY + 10);
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 15,
-      body: [
-        ["Terms Accepted", formData.tcsAccepted ? "✅ Yes" : "❌ No"],
-        ["Signed By", formData.signatureName || ""],
-        ["Date Signed", formData.signatureDate || ""],
-      ],
-      styles: { fontSize: 10 },
-    });
+  // 💳 Banking
+  doc.setFontSize(14);
+  doc.text("Banking Details", 14, doc.lastAutoTable.finalY + 10);
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 15,
+    body: [
+      ["Account Name", formData.accountName || ""],
+      ["BSB", formData.bsb || ""],
+      ["Account Number", formData.accountNumber || ""],
+    ],
+    styles: { fontSize: 10 },
+  });
 
-    // ✍️ Signature on last page
+  // 📜 Terms and Signature
+  doc.setFontSize(14);
+  doc.text("Agreement", 14, doc.lastAutoTable.finalY + 10);
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 15,
+    body: [
+      ["Terms Accepted", formData.tcsAccepted ? "✅ Yes" : "❌ No"],
+      ["Signed By", formData.signatureName || ""],
+      ["Date Signed", formData.signatureDate || ""],
+    ],
+    styles: { fontSize: 10 },
+  });
+
+  // ✍️ Signature Block
+  if (formData.signatureName) {
     doc.setFontSize(12);
-    doc.text(`Signed by: ${formData.signatureName || "—"}`, 14, doc.lastAutoTable.finalY + 20);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 150, doc.lastAutoTable.finalY + 20);
+    doc.text(`Signed by: ${formData.signatureName}`, 14, doc.lastAutoTable.finalY + 25);
+    doc.text(`Date: ${formData.signatureDate || ""}`, 14, doc.lastAutoTable.finalY + 32);
+  }
 
-    // 📎 Append Terms & Conditions PDF
-    try {
-      const termsPdf = await fetch("/terms-and-conditions.pdf");
-      const termsBlob = await termsPdf.blob();
-      const termsArrayBuffer = await termsBlob.arrayBuffer();
+  doc.setFontSize(10);
+  doc.text("Generated automatically by ASLS Vendor Portal", pageWidth / 2, 285, {
+    align: "center",
+  });
 
-      const currentPdfBytes = doc.output("arraybuffer");
-      const mergedPdf = await PDFLib.PDFDocument.create();
-      const mainDoc = await PDFLib.PDFDocument.load(currentPdfBytes);
-      const termsDoc = await PDFLib.PDFDocument.load(termsArrayBuffer);
+  const pdfBlob = doc.output("blob");
 
-      const [mainPages] = await mergedPdf.copyPages(mainDoc, mainDoc.getPageIndices());
-      mainPages.forEach((p) => mergedPdf.addPage(p));
-      const [termsPages] = await mergedPdf.copyPages(termsDoc, termsDoc.getPageIndices());
-      termsPages.forEach((p) => mergedPdf.addPage(p));
+  // 📎 Merge Terms & Conditions PDF
+  const termsResponse = await fetch("/terms-and-conditions.pdf");
+  const termsBytes = await termsResponse.arrayBuffer();
 
-      const finalBytes = await mergedPdf.save();
-      return { pdfBlob: new Blob([finalBytes], { type: "application/pdf" }) };
-    } catch (err) {
-      console.warn("Could not append T&Cs:", err);
-      const pdfBlob = doc.output("blob");
-      return { pdfBlob };
-    }
-  };
+  const mainPdf = await PDFLib.PDFDocument.load(await pdfBlob.arrayBuffer());
+  const termsPdf = await PDFLib.PDFDocument.load(termsBytes);
+  const copiedPages = await mainPdf.copyPages(termsPdf, termsPdf.getPageIndices());
+  copiedPages.forEach((page) => mainPdf.addPage(page));
+
+  const finalPdfBytes = await mainPdf.save();
+  const finalPdfBlob = new Blob([finalPdfBytes], { type: "application/pdf" });
+
+  const pdfBase64 = await blobToBase64(finalPdfBlob);
+  return { pdfBlob: finalPdfBlob, pdfBase64 };
+};
 
 
   // -------------------- BLOB HELPERS --------------------
