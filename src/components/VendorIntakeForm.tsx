@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import * as PDFLib from "pdf-lib"; // 👈 Add this line
 import { Loader2, ArrowLeft, Camera, Save } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useSearchParams } from "react-router-dom";
@@ -312,132 +313,168 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
       setSaving(false);
     }
   };
-  // -------------------- PDF GENERATION --------------------
-  const generatePDF = async (formData: any) => {
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
+// -------------------- PDF GENERATION --------------------
+const generatePDF = async (formData: any) => {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
 
-    // 🖼️ Logos
-    const aslsLogo = await fetch("/ASLS-logo.png").then((res) => res.blob());
-    const wmmLogo = await fetch("/World-Machine-Money-Logo.png").then((res) => res.blob());
-    const aslsImg = await readAsBase64(aslsLogo);
-    const wmmImg = await readAsBase64(wmmLogo);
+  // 🖼️ Logos
+  const aslsLogo = await fetch("/ASLS-logo.png").then((res) => res.blob());
+  const wmmLogo = await fetch("/World-Machine-Money-Logo.png").then((res) => res.blob());
+  const aslsImg = await readAsBase64(aslsLogo);
+  const wmmImg = await readAsBase64(wmmLogo);
 
-    const logoWidth = 40;
-    const spacing = 15;
-    const totalWidth = logoWidth * 2 + spacing;
-    const startX = (pageWidth - totalWidth) / 2;
+  const logoWidth = 40;
+  const spacing = 15;
+  const totalWidth = logoWidth * 2 + spacing;
+  const startX = (pageWidth - totalWidth) / 2;
 
-    doc.addImage(aslsImg, "PNG", startX, 10, logoWidth, 20);
-    doc.addImage(wmmImg, "PNG", startX + logoWidth + spacing, 10, logoWidth, 20);
+  doc.addImage(aslsImg, "PNG", startX, 10, logoWidth, 20);
+  doc.addImage(wmmImg, "PNG", startX + logoWidth + spacing, 10, logoWidth, 20);
 
-    doc.setFontSize(16);
-    doc.text("ASLS Vendor Intake Form", pageWidth / 2, 40, { align: "center" });
+  doc.setFontSize(16);
+  doc.text("ASLS Vendor Intake Form", pageWidth / 2, 40, { align: "center" });
 
-    // 🧾 Business Details
+  // 🧾 Business Details
+  doc.setFontSize(14);
+  doc.text("Business Details", 14, 55);
+  autoTable(doc, {
+    startY: 60,
+    head: [["Field", "Information"]],
+    body: [
+      ["ABN Number", formData.abnNumber || ""],
+      ["Business Name", formData.businessName || ""],
+      ["Entity Type", formData.entityType || ""],
+      ["Phone", formData.phone || ""],
+      ["Mobile", formData.mobile || ""],
+      ["Email", formData.email || ""],
+      ["Website", formData.website || ""],
+      ["Business Address", formData.businessAddress || ""],
+      ["Date of Incorporation", formData.dateOfIncorporation || ""],
+    ],
+    styles: { fontSize: 10 },
+    headStyles: { fillColor: [60, 179, 113] },
+  });
+
+  // 👥 Directors
+  const directors = formData.directors || [];
+  doc.setFontSize(14);
+  doc.text("Directors", 14, doc.lastAutoTable.finalY + 10);
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 15,
+    head: [["Name", "Phone", "Mobile", "Address", "Licence #", "State", "Expiry"]],
+    body: directors.map((d: any) => [
+      `${d.firstName} ${d.middleName || ""} ${d.surname}`.trim(),
+      d.phone || "",
+      d.mobile || "",
+      d.address || "—",
+      d.licenceNumber || "",
+      d.licenceState || "",
+      d.licenceExpiry || "",
+    ]),
+    styles: { fontSize: 10 },
+    headStyles: { fillColor: [100, 149, 237] },
+  });
+
+  // 📎 Uploaded Docs
+  doc.setFontSize(14);
+  doc.text("Uploaded Documents", 14, doc.lastAutoTable.finalY + 10);
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 15,
+    head: [["Document Type", "File URL / Status"]],
+    body: [
+      ["Certificate / Trust Deed", formData.certificateFiles ? "Uploaded ✅" : "Not uploaded"],
+      ["Bank Statement", formData.bankStatement ? "Uploaded ✅" : "Not uploaded"],
+      ["Tax Invoice Template", formData.taxInvoiceTemplate ? "Uploaded ✅" : "Not uploaded"],
+    ],
+    styles: { fontSize: 10 },
+    headStyles: { fillColor: [120, 120, 120] },
+  });
+
+  // 📎 Supporting Documents
+  if (formData.supportingDocuments?.length) {
     doc.setFontSize(14);
-    doc.text("Business Details", 14, 55);
-    autoTable(doc, {
-      startY: 60,
-      head: [["Field", "Information"]],
-      body: [
-        ["ABN Number", formData.abnNumber || ""],
-        ["Business Name", formData.businessName || ""],
-        ["Entity Type", formData.entityType || ""],
-        ["Phone", formData.phone || ""],
-        ["Mobile", formData.mobile || ""],
-        ["Email", formData.email || ""],
-        ["Website", formData.website || ""],
-        ["Business Address", formData.businessAddress || ""],
-        ["Date of Incorporation", formData.dateOfIncorporation || ""],
-      ],
-      styles: { fontSize: 10 },
-      headStyles: { fillColor: [60, 179, 113] },
-    });
-
-    // 👥 Directors
-    const directors = formData.directors || [];
-    doc.setFontSize(14);
-    doc.text("Directors", 14, doc.lastAutoTable.finalY + 10);
+    doc.text("Supporting Documents", 14, doc.lastAutoTable.finalY + 10);
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 15,
-      head: [["Name", "Phone", "Mobile", "Licence #", "State", "Expiry"]],
-      body: directors.map((d: any) => [
-        `${d.firstName} ${d.middleName} ${d.surname}`.trim(),
-        d.phone || "",
-        d.mobile || "",
-        d.licenceNumber || "",
-        d.licenceState || "",
-        d.licenceExpiry || "",
+      body: formData.supportingDocuments.map((docItem: any, i: number) => [
+        `${i + 1}. ${docItem.name || "Document"}`,
+        docItem.url || docItem.publicUrl || "Uploaded ✅",
       ]),
       styles: { fontSize: 10 },
-      headStyles: { fillColor: [100, 149, 237] },
     });
+  }
 
-    // 📎 Uploaded Docs
-    doc.setFontSize(14);
-    doc.text("Uploaded Documents", 14, doc.lastAutoTable.finalY + 10);
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 15,
-      head: [["Document Type", "File URL"]],
-      body: [
-        ["Certificate / Trust Deed", formData.certificateFiles ? "Uploaded ✅" : "Not uploaded"],
-        ["Bank Statement", formData.bankStatement ? "Uploaded ✅" : "Not uploaded"],
-        ["Tax Invoice Template", formData.taxInvoiceTemplate ? "Uploaded ✅" : "Not uploaded"],
-      ],
-      styles: { fontSize: 10 },
-      headStyles: { fillColor: [120, 120, 120] },
-    });
+  // ⚡ Solar Equipment
+  const listToString = (list: string[]) => (list?.length ? list.join(", ") : "None");
+  doc.setFontSize(14);
+  doc.text("Solar Equipment", 14, doc.lastAutoTable.finalY + 10);
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 15,
+    body: [
+      ["Panels", listToString(formData.solarPanels)],
+      ["Inverters", listToString(formData.inverters)],
+      ["Batteries", listToString(formData.batteries)],
+    ],
+    styles: { fontSize: 10 },
+  });
 
-    // ⚡ Solar Equipment
-    const listToString = (list: string[]) => (list?.length ? list.join(", ") : "None");
-    doc.setFontSize(14);
-    doc.text("Solar Equipment", 14, doc.lastAutoTable.finalY + 10);
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 15,
-      body: [
-        ["Panels", listToString(formData.solarPanels)],
-        ["Inverters", listToString(formData.inverters)],
-        ["Batteries", listToString(formData.batteries)],
-      ],
-      styles: { fontSize: 10 },
-    });
+  // 💳 Banking
+  doc.setFontSize(14);
+  doc.text("Banking Details", 14, doc.lastAutoTable.finalY + 10);
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 15,
+    body: [
+      ["Account Name", formData.accountName || ""],
+      ["BSB", formData.bsb || ""],
+      ["Account Number", formData.accountNumber || ""],
+    ],
+    styles: { fontSize: 10 },
+  });
 
-    // 💳 Banking
-    doc.setFontSize(14);
-    doc.text("Banking Details", 14, doc.lastAutoTable.finalY + 10);
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 15,
-      body: [
-        ["Account Name", formData.accountName || ""],
-        ["BSB", formData.bsb || ""],
-        ["Account Number", formData.accountNumber || ""],
-      ],
-      styles: { fontSize: 10 },
-    });
+  // 📜 Agreement
+  doc.setFontSize(14);
+  doc.text("Agreement", 14, doc.lastAutoTable.finalY + 10);
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 15,
+    body: [
+      ["Terms Accepted", formData.tcsAccepted ? "✅ Yes" : "❌ No"],
+      ["Signed By", formData.signatureName || ""],
+      ["Date Signed", formData.signatureDate || ""],
+    ],
+    styles: { fontSize: 10 },
+  });
 
-    // 📜 Terms
-    doc.setFontSize(14);
-    doc.text("Agreement", 14, doc.lastAutoTable.finalY + 10);
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 15,
-      body: [
-        ["Terms Accepted", formData.tcsAccepted ? "✅ Yes" : "❌ No"],
-        ["Signed By", formData.signatureName || ""],
-        ["Date Signed", formData.signatureDate || ""],
-      ],
-      styles: { fontSize: 10 },
-    });
+  // ✍️ Signature on last page
+  doc.setFontSize(12);
+  doc.text(`Signed by: ${formData.signatureName || "—"}`, 14, doc.lastAutoTable.finalY + 20);
+  doc.text(`Date: ${new Date().toLocaleDateString()}`, 150, doc.lastAutoTable.finalY + 20);
 
-    doc.setFontSize(10);
-    doc.text("Generated automatically by ASLS Vendor Portal", pageWidth / 2, 285, {
-      align: "center",
-    });
+  // 📎 Append Terms & Conditions PDF
+  try {
+    const termsPdf = await fetch("/terms-and-conditions.pdf");
+    const termsBlob = await termsPdf.blob();
+    const termsArrayBuffer = await termsBlob.arrayBuffer();
 
+    const currentPdfBytes = doc.output("arraybuffer");
+    const mergedPdf = await PDFLib.PDFDocument.create();
+    const mainDoc = await PDFLib.PDFDocument.load(currentPdfBytes);
+    const termsDoc = await PDFLib.PDFDocument.load(termsArrayBuffer);
+
+    const [mainPages] = await mergedPdf.copyPages(mainDoc, mainDoc.getPageIndices());
+    mainPages.forEach((p) => mergedPdf.addPage(p));
+    const [termsPages] = await mergedPdf.copyPages(termsDoc, termsDoc.getPageIndices());
+    termsPages.forEach((p) => mergedPdf.addPage(p));
+
+    const finalBytes = await mergedPdf.save();
+    return { pdfBlob: new Blob([finalBytes], { type: "application/pdf" }) };
+  } catch (err) {
+    console.warn("Could not append T&Cs:", err);
     const pdfBlob = doc.output("blob");
-    const pdfBase64 = await blobToBase64(pdfBlob);
-    return { pdfBlob, pdfBase64 };
-  };
+    return { pdfBlob };
+  }
+};
+
 
   // -------------------- BLOB HELPERS --------------------
   const readAsBase64 = (blob: Blob): Promise<string> =>
@@ -669,20 +706,14 @@ const supportingUrls =
             <div>
               <label className="font-semibold text-gray-700">Website*</label>
               <input
-                type="text"
-                name="website"
-                placeholder="www.example.com"
-                value={formData.website}
-                onChange={(e) => {
-                  let value = e.target.value.trim();
-                  if (value && !/^https?:\/\//i.test(value)) {
-                    value = "https://" + value;
-                  }
-                  setFormData((prev: any) => ({ ...prev, website: value }));
-                }}
-                className="w-full border rounded-lg p-3"
-                required
-              />
+  type="text"
+  name="website"
+  placeholder="e.g. www.businessname.com.au"
+  value={formData.website}
+  onChange={(e) => handleChange("website", e.target.value)}
+  className="w-full border-gray-300 rounded-lg p-2"
+/>
+
             </div>
           </div>
 
