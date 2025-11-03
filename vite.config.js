@@ -13,5 +13,5 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
   },
-  base: "./", // 👈 fixes blank page issues on Vercel & local
+  base: "/", // ✅ absolute root — required for SPA routing on Vercel
 });

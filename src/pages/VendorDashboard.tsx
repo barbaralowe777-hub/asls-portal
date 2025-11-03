@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Search, Filter, Download, Eye, Plus } from 'lucide-react';
 import { Application } from '@/types';
 import { mockApplications } from '@/data/mockData';
-import StatusBadge from './StatusBadge';
+import StatusBadge from "@/components/StatusBadge";
+
 
 interface VendorDashboardProps {
   onNewApplication: () => void;
