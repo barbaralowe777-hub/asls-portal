@@ -375,45 +375,45 @@ const generatePDF = async (formData: any) => {
     headStyles: { fillColor: [100, 149, 237] },
   });
 
-  // 📎 Uploaded Docs (with clickable links)
-  doc.setFontSize(14);
-  doc.text("Uploaded Documents", 14, doc.lastAutoTable.finalY + 10);
+  // 📎 Uploaded Docs (with clean clickable links)
+doc.setFontSize(14);
+doc.text("Uploaded Documents", 14, doc.lastAutoTable.finalY + 10);
 
-  const supportingDocs: [string, string][] = [
-    [
-      "Certificate / Trust Deed",
-      formData.certificateFiles
-        ? `View: ${formData.certificateFiles}`
-        : "❌ Not uploaded",
-    ],
-    [
-      "Bank Statement",
-      formData.bankStatement ? `View: ${formData.bankStatement}` : "❌ Not uploaded",
-    ],
-    [
-      "Tax Invoice Template",
-      formData.taxInvoiceTemplate
-        ? `View: ${formData.taxInvoiceTemplate}`
-        : "❌ Not uploaded",
-    ],
-  ];
+const uploadedDocs: { label: string; url?: string }[] = [
+  { label: "Certificate / Trust Deed", url: formData.certificateFiles },
+  { label: "Bank Statement", url: formData.bankStatement },
+  { label: "Tax Invoice Template", url: formData.taxInvoiceTemplate },
+];
 
-  autoTable(doc, {
-    startY: doc.lastAutoTable.finalY + 15,
-    head: [["Document Type", "File URL"]],
-    body: supportingDocs,
-    styles: { fontSize: 10, cellWidth: "wrap" },
-    headStyles: { fillColor: [120, 120, 120] },
-    didDrawCell: (data) => {
-      // make URLs clickable
-      if (data.column.index === 1 && data.cell.raw?.startsWith("View:")) {
-        const url = data.cell.raw.replace("View: ", "").trim();
+// add licence front/back
+(formData.directors || []).forEach((d: any, i: number) => {
+  if (d.licenceFrontUrl)
+    uploadedDocs.push({ label: `Licence Front (Director ${i + 1})`, url: d.licenceFrontUrl });
+  if (d.licencePhotoUrl)
+    uploadedDocs.push({ label: `Licence Back (Director ${i + 1})`, url: d.licencePhotoUrl });
+});
+
+autoTable(doc, {
+  startY: doc.lastAutoTable.finalY + 15,
+  head: [["Document Type", "File"]],
+  body: uploadedDocs.map((d) => [
+    d.label,
+    d.url ? `View File` : "❌ Not uploaded",
+  ]),
+  styles: { fontSize: 10, minCellHeight: 10, valign: "middle" },
+  headStyles: { fillColor: [120, 120, 120] },
+  didDrawCell: (data) => {
+    if (data.column.index === 1 && data.cell.raw === "View File") {
+      const docItem = uploadedDocs[data.row.index];
+      if (docItem.url) {
         doc.setTextColor(0, 0, 255);
-        doc.textWithLink("Open Document", data.cell.x + 2, data.cell.y + 6, { url });
+        doc.textWithLink("View File", data.cell.x + 2, data.cell.y + 6, { url: docItem.url });
         doc.setTextColor(0, 0, 0);
       }
-    },
-  });
+    }
+  },
+});
+
 
   // ⚡ Solar Equipment
   const listToString = (list: string[]) => (list?.length ? list.join(", ") : "None");
@@ -552,54 +552,83 @@ const generatePDF = async (formData: any) => {
 
 
 
-      // 4️⃣ Send Email
-      const emailPayload = {
-        to: ["john@worldmachine.com.au", "admin@asls.net.au"],
-        subject: `New Vendor Submission – ${formData.businessName}`,
-        text: `A new vendor intake form has been submitted by ${formData.businessName}.`,
-        html: `
-        <h2>New Vendor Intake Submission</h2>
-        <p><strong>Business Name:</strong> ${formData.businessName}</p>
-        <p><strong>Email:</strong> ${formData.email}</p>
-        <p><strong>Phone:</strong> ${formData.phone}</p>
-        <p><strong>Website:</strong> ${formData.website}</p>
-        <p><strong>Address:</strong> ${formData.businessAddress || "—"}</p>
+// 4️⃣ Send Email (to ASLS & admin)
+const emailPayload = {
+  to: ["john@worldmachine.com.au", "admin@asls.net.au"],
+  subject: `New Vendor Submission – ${formData.businessName}`,
+  text: `A new vendor intake form has been submitted by ${formData.businessName}.`,
+  html: `
+    <h2>New Vendor Intake Submission</h2>
+    <p><strong>Business Name:</strong> ${formData.businessName}</p>
+    <p><strong>Email:</strong> ${formData.email}</p>
+    <p><strong>Phone:</strong> ${formData.phone}</p>
+    <p><strong>Website:</strong> ${formData.website}</p>
+    <p><strong>Address:</strong> ${formData.businessAddress || "—"}</p>
 
-        <hr/>
-        <h3>📄 Documents</h3>
-        <p><a href="${pdfUrl}" target="_blank">View Vendor Summary PDF</a></p>
-        ${licenceUrl ? `<h4>Driver Licence(s):</h4><p>${licenceUrl}</p>` : ""}
-        ${supportingUrls.length
-            ? `<p>Supporting Documents:<br>${supportingUrls
-              .map((url) => `<a href="${url}" target="_blank">${url}</a>`)
-              .join("<br>")}</p>`
-            : ""
-          }
-      `,
-      };
-
-      const res = await fetch(
-        "https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify(emailPayload),
-        }
-      );
-
-      if (!res.ok) throw new Error("Email send failed");
-
-      alert("✅ Submission sent successfully!");
-    } catch (error) {
-      console.error("❌ Submission Error:", error);
-      alert(`❌ Submission Error: ${error.message}`);
-    } finally {
-      setLoading(false);
+    <hr/>
+    <h3>📄 Documents</h3>
+    <p><a href="${pdfUrl}" target="_blank">View Vendor Summary PDF</a></p>
+    ${licenceUrl ? `<h4>Driver Licence(s):</h4><p>${licenceUrl}</p>` : ""}
+    ${
+      supportingUrls?.length
+        ? `<p>Supporting Documents:<br>${supportingUrls
+            .map((url) => `<a href="${url}" target="_blank">${url}</a>`)
+            .join("<br>")}</p>`
+        : ""
     }
-  };
+  `,
+};
+
+// 📤 Send admin email first
+const res = await fetch(
+  "https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify(emailPayload),
+  }
+);
+
+if (!res.ok) throw new Error("Admin email failed to send");
+
+// 5️⃣ Send confirmation email to vendor
+const vendorEmailPayload = {
+  to: [formData.email],
+  subject: "Thank You for Submitting Your Vendor Accreditation Application",
+  text: `
+Dear ${formData.businessName},
+
+Thank you for submitting your Vendor Accreditation Application with us.
+
+Our Client Services team will be in touch within 24 hours on the number provided to guide you through the next steps.
+
+In the meantime, you’re welcome to submit up to three finance applications while your accreditation is under review.
+
+Simply visit https://www.portal.asls.net.au and click Vendor Login then click Sign Up (you will locate this under the login button). Your username will be your email you used in your Vendor Intake Form and you can set your own password to access the portal and begin a new application at any time.
+
+We appreciate your partnership and look forward to working with you.
+
+Kind regards,
+The Accreditation Team
+Australian Solar Lending Solutions
+`,
+};
+
+await fetch("https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+  },
+  body: JSON.stringify(vendorEmailPayload),
+});
+
+// ✅ Success
+alert("✅ Submission sent successfully!");
+
 
   // -------------------- FORM UI --------------------
   return (
