@@ -504,101 +504,100 @@ autoTable(doc, {
     });
 
   // -------------------- SUBMIT FORM --------------------
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  // -------------------- SUBMIT FORM --------------------
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setLoading(true);
 
-    try {
-      // 1️⃣ Generate & Upload PDF
-      const { pdfBlob } = await generatePDF(formData);
-      const pdfFileName = `vendor_${formData.businessName}_${Date.now()}.pdf`;
-      const { error: pdfError } = await supabase.storage
-        .from("uploads")
-        .upload(`vendor_forms/${pdfFileName}`, pdfBlob, {
-          contentType: "application/pdf",
-          upsert: true,
-        });
-      if (pdfError) throw pdfError;
+  try {
+    // 1️⃣ Generate & Upload PDF
+    const { pdfBlob } = await generatePDF(formData);
+    const pdfFileName = `vendor_${formData.businessName}_${Date.now()}.pdf`;
+    const { error: pdfError } = await supabase.storage
+      .from("uploads")
+      .upload(`vendor_forms/${pdfFileName}`, pdfBlob, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+    if (pdfError) throw pdfError;
 
-      const { data: pdfUrlData } = supabase.storage
-        .from("uploads")
-        .getPublicUrl(`vendor_forms/${pdfFileName}`);
-      const pdfUrl = pdfUrlData.publicUrl;
+    const { data: pdfUrlData } = supabase.storage
+      .from("uploads")
+      .getPublicUrl(`vendor_forms/${pdfFileName}`);
+    const pdfUrl = pdfUrlData.publicUrl;
 
-      // 2️⃣ Handle Licence URLs (your current correct version)
-      let licenceUrl = null;
-      const licenceUrls: string[] = [];
+    // 2️⃣ Handle Licence URLs
+    let licenceUrl = null;
+    const licenceUrls: string[] = [];
 
-      for (const [index, director] of formData.directors.entries()) {
-        const frontUrl = director.licenceFrontUrl || null;
-        const backUrl = director.licencePhotoUrl || null;
+    for (const [index, director] of formData.directors.entries()) {
+      const frontUrl = director.licenceFrontUrl || null;
+      const backUrl = director.licencePhotoUrl || null;
 
-        if (frontUrl || backUrl) {
-          licenceUrls.push(
-            `<strong>Director ${index + 1}</strong><br>` +
+      if (frontUrl || backUrl) {
+        licenceUrls.push(
+          `<strong>Director ${index + 1}</strong><br>` +
             `${frontUrl ? `Front: <a href="${frontUrl}" target="_blank">View</a><br>` : ""}` +
             `${backUrl ? `Back: <a href="${backUrl}" target="_blank">View</a>` : ""}`
-          );
-        }
+        );
       }
-
-      if (licenceUrls.length > 0) {
-        licenceUrl = licenceUrls.join("<hr>");
-      }
-
-      // ✅ Collect supporting document URLs (if any exist)
-      const supportingUrls =
-        formData.supportingDocuments?.map((doc: any) => doc.url || doc.publicUrl).filter(Boolean) || [];
-
-
-
-// 4️⃣ Send Email (to ASLS & admin)
-const emailPayload = {
-  to: ["john@worldmachine.com.au", "admin@asls.net.au"],
-  subject: `New Vendor Submission – ${formData.businessName}`,
-  text: `A new vendor intake form has been submitted by ${formData.businessName}.`,
-  html: `
-    <h2>New Vendor Intake Submission</h2>
-    <p><strong>Business Name:</strong> ${formData.businessName}</p>
-    <p><strong>Email:</strong> ${formData.email}</p>
-    <p><strong>Phone:</strong> ${formData.phone}</p>
-    <p><strong>Website:</strong> ${formData.website}</p>
-    <p><strong>Address:</strong> ${formData.businessAddress || "—"}</p>
-
-    <hr/>
-    <h3>📄 Documents</h3>
-    <p><a href="${pdfUrl}" target="_blank">View Vendor Summary PDF</a></p>
-    ${licenceUrl ? `<h4>Driver Licence(s):</h4><p>${licenceUrl}</p>` : ""}
-    ${
-      supportingUrls?.length
-        ? `<p>Supporting Documents:<br>${supportingUrls
-            .map((url) => `<a href="${url}" target="_blank">${url}</a>`)
-            .join("<br>")}</p>`
-        : ""
     }
-  `,
-};
 
-// 📤 Send admin email first
-const res = await fetch(
-  "https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email",
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify(emailPayload),
-  }
-);
+    if (licenceUrls.length > 0) {
+      licenceUrl = licenceUrls.join("<hr>");
+    }
 
-if (!res.ok) throw new Error("Admin email failed to send");
+    // 3️⃣ Collect Supporting Document URLs
+    const supportingUrls =
+      formData.supportingDocuments?.map((doc: any) => doc.url || doc.publicUrl).filter(Boolean) ||
+      [];
 
-// 5️⃣ Send confirmation email to vendor
-const vendorEmailPayload = {
-  to: [formData.email],
-  subject: "Thank You for Submitting Your Vendor Accreditation Application",
-  text: `
+    // 4️⃣ Send Email (to ASLS & admin)
+    const emailPayload = {
+      to: ["john@worldmachine.com.au", "admin@asls.net.au"],
+      subject: `New Vendor Submission – ${formData.businessName}`,
+      text: `A new vendor intake form has been submitted by ${formData.businessName}.`,
+      html: `
+        <h2>New Vendor Intake Submission</h2>
+        <p><strong>Business Name:</strong> ${formData.businessName}</p>
+        <p><strong>Email:</strong> ${formData.email}</p>
+        <p><strong>Phone:</strong> ${formData.phone}</p>
+        <p><strong>Website:</strong> ${formData.website}</p>
+        <p><strong>Address:</strong> ${formData.businessAddress || "—"}</p>
+
+        <hr/>
+        <h3>📄 Documents</h3>
+        <p><a href="${pdfUrl}" target="_blank">View Vendor Summary PDF</a></p>
+        ${licenceUrl ? `<h4>Driver Licence(s):</h4><p>${licenceUrl}</p>` : ""}
+        ${
+          supportingUrls?.length
+            ? `<p>Supporting Documents:<br>${supportingUrls
+                .map((url) => `<a href="${url}" target="_blank">${url}</a>`)
+                .join("<br>")}</p>`
+            : ""
+        }
+      `,
+    };
+
+    const res = await fetch(
+      "https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify(emailPayload),
+      }
+    );
+
+    if (!res.ok) throw new Error("Admin email failed to send");
+
+    // 5️⃣ Send confirmation email to vendor
+    const vendorEmailPayload = {
+      to: [formData.email],
+      subject: "Thank You for Submitting Your Vendor Accreditation Application",
+      text: `
 Dear ${formData.businessName},
 
 Thank you for submitting your Vendor Accreditation Application with us.
@@ -614,21 +613,27 @@ We appreciate your partnership and look forward to working with you.
 Kind regards,
 The Accreditation Team
 Australian Solar Lending Solutions
-`,
+      `,
+    };
+
+    await fetch("https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify(vendorEmailPayload),
+    });
+
+    // ✅ Success
+    alert("✅ Submission sent successfully!");
+  } catch (error: any) {
+    console.error("❌ Submission Error:", error);
+    alert(`❌ Submission Error: ${error.message}`);
+  } finally {
+    setLoading(false);
+  }
 };
-
-await fetch("https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-  },
-  body: JSON.stringify(vendorEmailPayload),
-});
-
-// ✅ Success
-alert("✅ Submission sent successfully!");
-
 
   // -------------------- FORM UI --------------------
   return (
