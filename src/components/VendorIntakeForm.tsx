@@ -286,32 +286,94 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack, onSubmit }) => {
 
 
   // -------------------- SAVE FOR LATER --------------------
-  const saveFormForLater = async () => {
-    setSaving(true);
-    try {
-      let draftId = savedId;
-      if (draftId) {
-        await supabase.from("vendor_drafts").update({ formData }).eq("id", draftId);
-      } else {
-        const { data, error } = await supabase
-          .from("vendor_drafts")
-          .insert([{ formData }])
-          .select("id")
-          .single();
-        if (error) throw error;
-        draftId = data.id;
-        setSavedId(draftId);
-      }
+const saveFormForLater = async () => {
+  setSaving(true);
+  try {
+    let draftId = savedId;
 
-      const resumeLink = `${window.location.origin}/vendor-intake?draftId=${draftId}`;
-      alert("✅ Your progress has been saved! You can resume later using the saved link:\n" + resumeLink);
-    } catch (err) {
-      console.error("❌ Save failed", err);
-      alert("Error saving progress. Please try again.");
-    } finally {
-      setSaving(false);
+    // 🧩 Save or update draft in Supabase
+    if (draftId) {
+      const { error } = await supabase
+        .from("vendor_drafts")
+        .update({ formData })
+        .eq("id", draftId);
+      if (error) throw error;
+    } else {
+      const { data, error } = await supabase
+        .from("vendor_drafts")
+        .insert([{ formData }])
+        .select("id")
+        .single();
+      if (error) throw error;
+      draftId = data.id;
+      setSavedId(draftId);
     }
-  };
+
+    // 🔗 Generate the magic resume link
+    const resumeLink = `${window.location.origin}/vendor-intake?draftId=${draftId}`;
+
+    // 📧 Send the magic link via Supabase email function
+    const emailPayload = {
+      to: [formData.email],
+      subject: "Your Saved Vendor Application – Resume Anytime",
+      text: `
+Dear ${formData.businessName || "Vendor"},
+
+You’ve saved your Vendor Accreditation Application for later.
+
+When you’re ready to continue, simply click the link below to return to your saved form:
+
+${resumeLink}
+
+This link is unique to your submission and will restore all your saved details.
+
+Kind regards,  
+Australian Solar Lending Solutions
+      `,
+      html: `
+        <h2>Your Saved Vendor Application</h2>
+        <p>Dear ${formData.businessName || "Vendor"},</p>
+        <p>You’ve saved your Vendor Accreditation Application for later.</p>
+        <p>
+          When you’re ready to continue, simply click the link below to return to your saved form:
+        </p>
+        <p>
+          <a href="${resumeLink}" target="_blank" style="color:#1a73e8;text-decoration:underline;">
+            Resume Application
+          </a>
+        </p>
+        <p>This link is unique to your submission and will restore all your saved details.</p>
+        <p>Kind regards,<br><strong>Australian Solar Lending Solutions</strong></p>
+      `,
+    };
+
+    const res = await fetch(
+      "https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify(emailPayload),
+      }
+    );
+
+    if (!res.ok) throw new Error("Email failed to send");
+
+    // ✅ Local confirmation message
+    alert(
+      `✅ Your progress has been saved!\n\nYou’ll receive an email shortly with your personal resume link:\n\n${resumeLink}`
+    );
+
+  } catch (err) {
+    console.error("❌ Save failed", err);
+    alert("Error saving progress. Please try again.");
+  } finally {
+    setSaving(false);
+  }
+};
+
   // -------------------- PDF GENERATION --------------------
 const generatePDF = async (formData: any) => {
   const doc = new jsPDF();
