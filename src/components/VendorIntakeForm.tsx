@@ -655,37 +655,83 @@ const handleSubmit = async (e: React.FormEvent) => {
 
     if (!res.ok) throw new Error("Admin email failed to send");
 
-    // 5️⃣ Send confirmation email to vendor
-    const vendorEmailPayload = {
-      to: [formData.email],
-      subject: "Thank You for Submitting Your Vendor Accreditation Application",
-      text: `
+// 5️⃣ Send confirmation email to vendor
+const vendorEmailPayload = {
+  to: [formData.email],
+  subject: "Thank You for Submitting Your Vendor Accreditation Application",
+  text: `
 Dear ${formData.businessName},
 
-Thank you for submitting your Vendor Accreditation Application with us.
+Thank you for submitting your Vendor Accreditation Application with Australian Solar Lending Solutions.
 
 Our Client Services team will be in touch within 24 hours on the number provided to guide you through the next steps.
 
 In the meantime, you’re welcome to submit up to three finance applications while your accreditation is under review.
 
-Simply visit https://www.portal.asls.net.au and click Vendor Login then click Sign Up (you will locate this under the login button). Your username will be your email you used in your Vendor Intake Form and you can set your own password to access the portal and begin a new application at any time.
+Simply visit https://portal.asls.net.au and click "Vendor Login", then select "Sign Up" (you will find this option just below the login button). 
+Your username will be the same email you used in your Vendor Intake Form, and you can set your own password to access the portal and begin a new application at any time.
 
 We appreciate your partnership and look forward to working with you.
 
 Kind regards,
 The Accreditation Team
 Australian Solar Lending Solutions
-      `,
-    };
+  `,
+  html: `
+  <div style="font-family: Arial, sans-serif; line-height:1.6; color:#222; background:#f9f9f9; padding:30px;">
+    <div style="max-width:600px; margin:auto; background:#ffffff; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.1); overflow:hidden;">
+      
+      <div style="text-align:center; background-color:#0ac432; padding:25px 0; border-bottom:4px solid #06b824ff;">
+        <img src="https://portal.asls.net.au/ASLS-logo.png" alt="Australian Solar Lending Solutions" style="max-width:200px; height:auto;" />
+      </div>
 
-    await fetch("https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify(vendorEmailPayload),
-    });
+      <div style="padding:30px;">
+        <p>Dear ${formData.businessName},</p>
+
+        <p>Thank you for submitting your <strong>Vendor Accreditation Application</strong> with 
+        <strong>Australian Solar Lending Solutions (ASLS)</strong>.</p>
+
+        <p>Our Client Services team will be in touch within <strong>24 hours</strong> on the number provided to guide you through the next steps.</p>
+
+        <p>In the meantime, you’re welcome to submit up to three finance applications while your accreditation is under review.</p>
+
+        <p>Simply visit 
+          <a href="https://portal.asls.net.au" target="_blank" style="color:#00796b; text-decoration:none; font-weight:bold;">
+            https://portal.asls.net.au
+          </a>
+          and click <strong>Vendor Login</strong>, then select <strong>Sign Up</strong> 
+          (you’ll find this option just below the login button).
+        </p>
+
+        <p>Your username will be the same email you used in your Vendor Intake Form, and you can set your own password to access the portal and begin a new application at any time.</p>
+
+        <p>We appreciate your partnership and look forward to working with you.</p>
+
+        <p style="margin-top:20px;">
+          Kind regards,<br/>
+          <strong>The Accreditation Team</strong><br/>
+          Australian Solar Lending Solutions
+        </p>
+      </div>
+
+      <div style="text-align:center; font-size:12px; color:#888; padding:15px; background-color:#f1f1f1;">
+        © ${new Date().getFullYear()} Australian Solar Lending Solutions. All rights reserved.
+      </div>
+    </div>
+  </div>
+  `,
+};
+
+// 📤 Send via Supabase email function
+await fetch("https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+  },
+  body: JSON.stringify(vendorEmailPayload),
+});
+
 
     // ✅ Success
     alert("✅ Submission sent successfully!");
