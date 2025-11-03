@@ -6,20 +6,11 @@ import {
   PiggyBank,
   Award,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
-interface LandingPageProps {
-  onGetStarted: () => void;
-  onVendorLogin: () => void;
-  onAgentLogin: () => void;
-  onAdminLogin: () => void;
-}
+const LandingPage: React.FC = () => {
+  const navigate = useNavigate();
 
-const LandingPage: React.FC<LandingPageProps> = ({
-  onGetStarted,
-  onVendorLogin,
-  onAgentLogin,
-  onAdminLogin,
-}) => {
   const features = [
     {
       icon: Clock,
@@ -38,7 +29,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
     },
   ];
 
-  // ✅ Verified, CORS-safe PNG logos (render everywhere)
+  // ✅ CORS-safe PNG partner logos
   const partners = [
     {
       name: "Jinko Solar",
@@ -91,19 +82,19 @@ const LandingPage: React.FC<LandingPageProps> = ({
               {/* Login Buttons */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                 <button
-                  onClick={onVendorLogin}
+                  onClick={() => navigate("/vendor-dashboard")}
                   className="bg-white text-[#1dad21] px-6 py-4 rounded-lg font-semibold border-2 border-[#1dad21] hover:bg-green-50 transition shadow-sm hover:shadow-md"
                 >
                   Vendor Login
                 </button>
                 <button
-                  onClick={onAgentLogin}
+                  onClick={() => navigate("/agent-dashboard")}
                   className="bg-white text-[#1dad21] px-6 py-4 rounded-lg font-semibold border-2 border-[#1dad21] hover:bg-green-50 transition shadow-sm hover:shadow-md"
                 >
                   Agents Login
                 </button>
                 <button
-                  onClick={onAdminLogin}
+                  onClick={() => navigate("/admin-dashboard")}
                   className="bg-[#D4AF37] text-white px-6 py-4 rounded-lg font-semibold hover:bg-yellow-600 transition shadow-sm hover:shadow-md"
                 >
                   Admin Login
@@ -113,7 +104,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
               {/* Get Accredited Button */}
               <div className="mt-4">
                 <button
-                  onClick={onGetStarted}
+                  onClick={() => navigate("/vendor-intake")}
                   className="w-full sm:w-auto bg-[#1dad21] text-white px-8 py-4 rounded-lg font-semibold hover:bg-green-700 transition flex items-center justify-center shadow-md hover:shadow-lg"
                 >
                   Get Accredited <ArrowRight className="ml-2 w-5 h-5" />
@@ -122,6 +113,10 @@ const LandingPage: React.FC<LandingPageProps> = ({
 
               {/* Highlights */}
               <div className="mt-8 flex flex-wrap items-center gap-6">
+                <div className="flex items-center">
+                  <CheckCircle className="w-5 h-5 text-[#1dad21] mr-2" />
+                  <span className="text-sm text-gray-700">Fast approvals</span>
+                </div>
                 <div className="flex items-center">
                   <CheckCircle className="w-5 h-5 text-[#1dad21] mr-2" />
                   <span className="text-sm text-gray-700">No setup fees</span>
@@ -145,7 +140,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </div>
 
-      {/* Features Section (cleaner, no mini images) */}
+      {/* Features Section */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-16">
         <div className="grid md:grid-cols-3 gap-8">
           {features.map((feature, index) => (
@@ -162,7 +157,6 @@ const LandingPage: React.FC<LandingPageProps> = ({
               <p className="text-gray-700">{feature.description}</p>
             </div>
           ))}
-        
         </div>
       </div>
     </div>
@@ -170,6 +164,3 @@ const LandingPage: React.FC<LandingPageProps> = ({
 };
 
 export default LandingPage;
-
-
-
