@@ -11,8 +11,7 @@ interface EquipmentDetailsSectionProps {
 }
 
 const categories = [
-  'Solar Panels', 'Inverters', 'Batteries', 'Mounting Systems', 
-  'Monitoring Systems', 'Electrical Components', 'Other'
+  'Solar Panels', 'Inverters', 'Batteries',
 ];
 
 const manufacturers = [

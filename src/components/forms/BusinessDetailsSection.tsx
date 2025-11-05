@@ -1,158 +1,171 @@
-import React from 'react';
-import { Loader2 } from 'lucide-react';
+import React from "react";
+import { Loader2 } from "lucide-react";
 
 interface BusinessDetailsSectionProps {
   formData: any;
-  handleChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
+  handleChange: (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
+  ) => void;
   abnLoading: boolean;
 }
 
-const BusinessDetailsSection: React.FC<BusinessDetailsSectionProps> = ({ 
-  formData, 
-  handleChange, 
-  abnLoading 
+const BusinessDetailsSection: React.FC<BusinessDetailsSectionProps> = ({
+  formData,
+  handleChange,
+  abnLoading,
 }) => {
   return (
-    <div className="border-b pb-8">
-      <h2 className="text-xl font-semibold mb-6 text-gray-800">BUSINESS DETAILS</h2>
-      <div className="grid md:grid-cols-2 gap-6">
+    <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+      <h2 className="text-xl font-semibold text-gray-800 mb-4">
+        Business Details
+      </h2>
+
+      {/* ABN Input */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            ABN Number *
-            {abnLoading && <span className="ml-2 text-sm text-gray-500">(Looking up business details...)</span>}
+          <label className="font-semibold text-gray-700">
+            ABN Number<span className="text-red-500">*</span>
           </label>
-          <input
-            type="text"
-            name="abnNumber"
-            value={formData.abnNumber}
-            onChange={handleChange}
-            maxLength={11}
-            required
-            placeholder="Enter 11-digit ABN"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              name="abnNumber"
+              value={formData.abnNumber}
+              onChange={handleChange}
+              placeholder="Enter ABN (11 digits)"
+              className="w-full border rounded-lg p-3"
+              required
+            />
+            {abnLoading && (
+              <Loader2 className="animate-spin w-5 h-5 text-green-600" />
+            )}
+          </div>
         </div>
+
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Entity Name</label>
+          <label className="font-semibold text-gray-700">
+            Entity Name
+          </label>
           <input
             type="text"
             name="entityName"
             value={formData.entityName}
             onChange={handleChange}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+            className="w-full border rounded-lg p-3 bg-gray-100"
             readOnly
           />
         </div>
+
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="font-semibold text-gray-700">
+            Entity Type
+          </label>
+          <input
+            type="text"
+            name="entityType"
+            value={formData.entityType}
+            onChange={handleChange}
+            className="w-full border rounded-lg p-3 bg-gray-100"
+            readOnly
+          />
+        </div>
+
+        <div>
+          <label className="font-semibold text-gray-700">
             ABN Status
-            {formData.abnStatus === 'Active' && (
-              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                Active
-              </span>
-            )}
-            {formData.abnStatus === 'Inactive' && (
-              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                Inactive
-              </span>
-            )}
           </label>
           <input
             type="text"
             name="abnStatus"
             value={formData.abnStatus}
             onChange={handleChange}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+            className="w-full border rounded-lg p-3 bg-gray-100"
             readOnly
           />
         </div>
+
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Entity Type</label>
-          <input
-            type="text"
-            name="entityType"
-            value={formData.entityType}
-            onChange={handleChange}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-            readOnly
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            GST Registration
-            {formData.gstFrom === 'Registered' && (
-              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                ✓ GST Registered
-              </span>
-            )}
-            {formData.gstFrom === 'Not Registered' && (
-              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                Not GST Registered
-              </span>
-            )}
+          <label className="font-semibold text-gray-700">
+            GST Registered From
           </label>
           <input
             type="text"
             name="gstFrom"
-            value={formData.gstFrom || ''}
+            value={formData.gstFrom}
             onChange={handleChange}
-            placeholder="GST status will appear here"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+            className="w-full border rounded-lg p-3 bg-gray-100"
             readOnly
           />
         </div>
+
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Product *</label>
-          <select
-            name="product"
-            value={formData.product}
-            onChange={handleChange}
-            required
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-          >
-            <option value="">Please Select</option>
-            <option value="Classic Lease">Classic Lease (Rental)</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Industry Type *</label>
-          <select
-            name="industryType"
-            value={formData.industryType}
-            onChange={handleChange}
-            required
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-          >
-            <option value="">Please Select</option>
-            <option value="Hospitality">Yes, Hospitality</option>
-            <option value="Beauty">Yes, Beauty</option>
-            <option value="Fitness">Yes, Fitness</option>
-            <option value="No">NO</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Website *</label>
+          <label className="font-semibold text-gray-700">
+            Website
+          </label>
           <input
-            type="url"
+            type="text"
             name="website"
             value={formData.website}
             onChange={handleChange}
-            required
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+            placeholder="e.g. www.businessname.com.au"
+            className="w-full border rounded-lg p-3"
+          />
+        </div>
+
+        <div>
+          <label className="font-semibold text-gray-700">
+            Industry Type
+          </label>
+          <input
+            type="text"
+            name="industryType"
+            value={formData.industryType}
+            onChange={handleChange}
+            placeholder="e.g. Solar Installation"
+            className="w-full border rounded-lg p-3"
+          />
+        </div>
+
+        <div className="col-span-1 sm:col-span-2">
+          <label className="font-semibold text-gray-700">
+            Additional Info
+          </label>
+          <textarea
+            name="additionalInfo"
+            value={formData.additionalInfo}
+            onChange={handleChange}
+            rows={3}
+            className="w-full border rounded-lg p-3"
+            placeholder="Any extra notes or details..."
           />
         </div>
       </div>
-      <div className="mt-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Additional Information</label>
-        <textarea
-          name="additionalInfo"
-          value={formData.additionalInfo}
-          onChange={handleChange}
-          rows={3}
-          placeholder="Eg: Reason for Investment, Company Background etc"
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-        />
-      </div>
+
+      {/* ✅ Optional ABN Verification Summary */}
+      {formData.entityName && (
+        <div className="mt-6 bg-green-50 border border-green-300 rounded-lg p-4">
+          <h3 className="text-green-800 font-semibold mb-2 flex items-center">
+            ABN Verified ✅
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-700">
+            <p>
+              <strong>Entity Name:</strong> {formData.entityName || "—"}
+            </p>
+            <p>
+              <strong>ABN Status:</strong> {formData.abnStatus || "—"}
+            </p>
+            <p>
+              <strong>Entity Type:</strong> {formData.entityType || "—"}
+            </p>
+            <p>
+              <strong>GST Registered From:</strong>{" "}
+              {formData.gstFrom || "Not Registered"}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

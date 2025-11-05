@@ -423,7 +423,7 @@ const generatePDF = async (formData: any) => {
   doc.text("Directors", 14, doc.lastAutoTable.finalY + 10);
   autoTable(doc, {
     startY: doc.lastAutoTable.finalY + 15,
-    head: [["Name", "Phone", "Mobile", "Address", "Licence #", "State", "Expiry"]],
+    head: [["Name", "Phone", "Mobile", "Residential Address", "Licence #", "State", "Expiry"]],
     body: directors.map((d: any) => [
       `${d.firstName} ${d.middleName} ${d.surname}`.trim(),
       d.phone || "",
@@ -662,14 +662,11 @@ const vendorEmailPayload = {
   text: `
 Dear ${formData.businessName},
 
-Thank you for submitting your Vendor Accreditation Application with Australian Solar Lending Solutions.
+Thank you for submitting your Vendor Accreditation Application with Australian Solar Lending Solutions. Your application is now under review.
 
 Our Client Services team will be in touch within 24 hours on the number provided to guide you through the next steps.
 
-In the meantime, you’re welcome to submit up to three finance applications while your accreditation is under review.
-
-Simply visit https://portal.asls.net.au and click "Vendor Login", then select "Sign Up" (you will find this option just below the login button). 
-Your username will be the same email you used in your Vendor Intake Form, and you can set your own password to access the portal and begin a new application at any time.
+Once you have been accredited, you will receive an email inviting you to access our vendor/agent portal for easy online applications and to monitor their progress.
 
 We appreciate your partnership and look forward to working with you.
 
