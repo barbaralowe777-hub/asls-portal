@@ -25,8 +25,9 @@ serve(async (req) => {
   try {
     const { to, subject, text, html, attachments } = await req.json();
 
-    const SENDGRID_API_KEY = Deno.env.get("SENDGRID_API_KEY");
-    if (!SENDGRID_API_KEY) throw new Error("Missing SENDGRID_API_KEY");
+const SENDGRID_API_KEY = Deno.env.get("SENDGRID_API_KEY");
+console.log("✅ SENDGRID_API_KEY loaded:", !!SENDGRID_API_KEY);
+if (!SENDGRID_API_KEY) throw new Error("Missing SENDGRID_API_KEY");
 
     if (!to || !subject || !text)
       throw new Error("Missing required fields: to, subject, text");
