@@ -17,6 +17,7 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
       case 'approved':
         return 'bg-green-100 text-green-700 border-green-300';
       case 'funded':
+      case 'settled':
         return 'bg-emerald-100 text-emerald-700 border-emerald-300';
       case 'declined':
         return 'bg-red-100 text-red-700 border-red-300';

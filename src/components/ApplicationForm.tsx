@@ -43,6 +43,7 @@ const digitsOnly = (v: string) => v.replace(/\D/g, "");
 const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) => {
   const [loading, setLoading] = useState(false);
   const [successId, setSuccessId] = useState<string | null>(null);
+  const [vendorId, setVendorId] = useState<string | null>(null);
   const [abnLoading, setAbnLoading] = useState(false);
   const [supplierAbnLoading, setSupplierAbnLoading] = useState(false);
   const [addressLoading, setAddressLoading] = useState(false);
@@ -109,6 +110,24 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
 
   const abnDebounceRef = useRef<number | null>(null);
   const supplierAbnDebounceRef = useRef<number | null>(null);
+  
+  // Load vendor_id from the logged-in profile
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('vendor_id')
+          .eq('id', session.user.id)
+          .single();
+        setVendorId((profile as any)?.vendor_id || null);
+      } catch (e) {
+        console.warn('Failed to load vendor_id', e);
+      }
+    })();
+  }, []);
 
   // Attach Google Places Autocomplete to installation address
   useEffect(() => {
@@ -401,7 +420,7 @@ const handleAbnLookup = async (rawAbn: string) => {
         if (url) links.push(`${d.type || "Doc"}: ${url}`);
       }
 
-      // 3. Persist minimal record for dashboard (best-effort)
+      // 3. Persist minimal record for dashboard (best-effort) with vendor_id from profile
       try {
         await supabase.from('applications').insert([
           {
@@ -409,7 +428,7 @@ const handleAbnLookup = async (rawAbn: string) => {
             status: 'submitted',
             entity_name: formData.entityName || null,
             abn_number: formData.abnNumber || null,
-            vendor_id: formData.vendorId || null,
+            vendor_id: vendorId || null,
             vendor_name: formData.vendorName || null,
             finance_amount: formData.financeAmount || null,
             pdf_url: pdfUrl || null,
@@ -417,7 +436,7 @@ const handleAbnLookup = async (rawAbn: string) => {
           },
         ] as any);
       } catch (e) {
-        console.warn('Applications table insert failed (create table and RLS policy to enable):', e);
+        console.warn('Applications insert failed (ensure applications table & RLS).', e);
       }
 
       // 4. Email admins
@@ -473,7 +492,7 @@ const handleAbnLookup = async (rawAbn: string) => {
           <img
             src="/ASLS-logo.png"
             alt="ASLS"
-            className="h-36 sm:h-48 object-contain max-w-[420px]"
+            className="h-24 md:h-28 object-contain"
           />
         </div>
         <button
