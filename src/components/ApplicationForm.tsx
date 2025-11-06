@@ -42,6 +42,7 @@ const digitsOnly = (v: string) => v.replace(/\D/g, "");
 
 const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) => {
   const [loading, setLoading] = useState(false);
+  const [successId, setSuccessId] = useState<string | null>(null);
   const [abnLoading, setAbnLoading] = useState(false);
   const [supplierAbnLoading, setSupplierAbnLoading] = useState(false);
   const [addressLoading, setAddressLoading] = useState(false);
@@ -400,7 +401,26 @@ const handleAbnLookup = async (rawAbn: string) => {
         if (url) links.push(`${d.type || "Doc"}: ${url}`);
       }
 
-      // 3. Email admins
+      // 3. Persist minimal record for dashboard (best-effort)
+      try {
+        await supabase.from('applications').insert([
+          {
+            id: referenceNumber,
+            status: 'submitted',
+            entity_name: formData.entityName || null,
+            abn_number: formData.abnNumber || null,
+            vendor_id: formData.vendorId || null,
+            vendor_name: formData.vendorName || null,
+            finance_amount: formData.financeAmount || null,
+            pdf_url: pdfUrl || null,
+            data: payload,
+          },
+        ] as any);
+      } catch (e) {
+        console.warn('Applications table insert failed (create table and RLS policy to enable):', e);
+      }
+
+      // 4. Email admins
       const subject = `ASLS Application ${referenceNumber} - ${formData.entityName || formData.abnNumber}`;
       const html = `
         <h2>New Application Submitted</h2>
@@ -416,9 +436,12 @@ const handleAbnLookup = async (rawAbn: string) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ to: ["john@asls.et.au", "admin@asls.net.au"], subject, text: `PDF: ${pdfUrl}`, html }),
+        body: JSON.stringify({ to: ["john@asls.net.au", "admin@asls.net.au"], subject, text: `PDF: ${pdfUrl}`, html }),
       });
 
+      // Success UI: inline banner with Application ID
+      setSuccessId(referenceNumber);
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
       onSubmit?.();
     } catch (err) {
       console.error("Submit failed", err);
@@ -431,6 +454,21 @@ const handleAbnLookup = async (rawAbn: string) => {
   return (
     <div className="min-h-screen bg-gray-50 py-10">
       <div className="max-w-5xl mx-auto bg-white shadow-lg rounded-2xl p-8">
+        {successId && (
+          <div className="mb-4 rounded-lg border border-green-300 bg-green-50 p-4 text-green-800 flex items-start justify-between">
+            <div>
+              <p className="font-semibold">Application Submitted Successfully</p>
+              <p className="text-sm">Your Application ID is <span className="font-mono font-bold">{successId}</span>. Keep this for your records.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigator.clipboard?.writeText(successId)}
+              className="ml-4 inline-flex items-center rounded-md border border-green-400 px-3 py-1 text-sm hover:bg-green-100"
+            >
+              Copy ID
+            </button>
+          </div>
+        )}
         <div className="w-full flex justify-center mb-6">
           <img
             src="/ASLS-logo.png"
