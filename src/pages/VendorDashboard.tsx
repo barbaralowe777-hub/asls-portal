@@ -55,8 +55,10 @@ const VendorDashboard: React.FC = () => {
   }, []);
 
   // Dev-only: populate mock data if none returned so you can preview UI easily
+  // Toggle demo data on: set VITE_SHOW_MOCK_DASHBOARD=1 in env or add ?demo=1 to URL
+  const SHOW_DEMO = (import.meta.env.VITE_SHOW_MOCK_DASHBOARD === '1') || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('demo'));
   useEffect(() => {
-    if (import.meta.env.DEV && !loading && apps.length === 0) {
+    if (SHOW_DEMO && !loading && apps.length === 0) {
       const now = new Date();
       const daysAgo = (n: number) => new Date(now.getTime() - n*24*60*60*1000).toISOString();
       const sample: AppRow[] = [
@@ -117,7 +119,7 @@ const VendorDashboard: React.FC = () => {
       ];
       setApps(sample);
     }
-  }, [loading, apps.length]);
+  }, [loading, apps.length, SHOW_DEMO]);
 
   const filteredApps = useMemo(() => {
     let list = apps;
@@ -206,6 +208,29 @@ const VendorDashboard: React.FC = () => {
               className="h-32 md:h-40 w-auto"
             />
           </div>
+
+          {/* Demo banner */}
+          {SHOW_DEMO && (
+            <div className="mb-4 rounded-lg border border-blue-300 bg-blue-50 text-blue-800 p-3 flex items-center justify-between">
+              <div>
+                <strong>Demo Mode</strong> — sample data is displayed. Remove <span className="font-mono">?demo=1</span> from the URL to hide.
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('demo');
+                    const next = url.pathname + (url.searchParams.toString() ? ('?' + url.searchParams.toString()) : '');
+                    window.location.replace(next);
+                  } catch {}
+                }}
+                className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+              >
+                Exit demo
+              </button>
+            </div>
+          )}
 
           {/* Header */}
           <div className="flex justify-between items-center mb-6">
