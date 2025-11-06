@@ -9,6 +9,8 @@ import * as PDFLib from "pdf-lib";
 import { Loader2, ArrowLeft, Save } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useSearchParams } from "react-router-dom";
+/* global google */
+
 
 // ✅ Google Maps API Loader
 const loadGoogleMapsScript = (callback: () => void) => {
@@ -95,34 +97,55 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack }) => {
     solarPanels: [] as string[],
     inverters: [] as string[],
     batteries: [] as string[],
+    installerCertifications: [] as string[],
   });
 
   // -------------------- GOOGLE MAPS AUTOCOMPLETE --------------------
-  useEffect(() => {
-    loadGoogleMapsScript(() => {
-      const businessInput = document.getElementById(
-        "businessAddress"
-      ) as HTMLInputElement | null;
-      if (businessInput && !businessInput.hasAttribute("data-autocomplete-initialized")) {
-        const autocomplete = new google.maps.places.Autocomplete(businessInput, {
+useEffect(() => {
+  loadGoogleMapsScript(() => {
+    // Business Address
+    const businessInput = document.getElementById("businessAddress") as HTMLInputElement | null;
+    if (businessInput && !businessInput.hasAttribute("data-autocomplete-initialized")) {
+      const ac = new google.maps.places.Autocomplete(businessInput, {
+        types: ["address"],
+        componentRestrictions: { country: "au" },
+      });
+      ac.addListener("place_changed", () => {
+        const place = ac.getPlace();
+        if (place?.formatted_address) {
+          setFormData((prev: any) => ({ ...prev, businessAddress: place.formatted_address }));
+        }
+      });
+      businessInput.setAttribute("data-autocomplete-initialized", "true");
+    }
+
+    // Director Addresses (for currently visible directors)
+    for (let i = 1; i <= directorCount; i++) {
+      const id = `address-${i}`;
+      const input = document.getElementById(id) as HTMLInputElement | null;
+      if (input && !input.hasAttribute("data-autocomplete-initialized")) {
+        const ac = new google.maps.places.Autocomplete(input, {
           types: ["address"],
           componentRestrictions: { country: "au" },
         });
-
-        autocomplete.addListener("place_changed", () => {
-          const place = autocomplete.getPlace();
-          if (place && place.formatted_address) {
-            setFormData((prev: any) => ({
-              ...prev,
-              businessAddress: place.formatted_address,
-            }));
+        const idx = i; // 1-based index matches your director.index
+        ac.addListener("place_changed", () => {
+          const place = ac.getPlace();
+          if (place?.formatted_address) {
+            setFormData((prev: any) => {
+              const directors = [...prev.directors];
+              directors[idx - 1].address = place.formatted_address;
+              return { ...prev, directors };
+            });
           }
         });
-
-        businessInput.setAttribute("data-autocomplete-initialized", "true");
+        input.setAttribute("data-autocomplete-initialized", "true");
       }
-    });
-  }, []);
+    }
+  });
+  // Re-run when directorCount changes so newly shown inputs get bound
+}, [directorCount]);
+
 
   // -------------------- ABN LOOKUP --------------------
   const handleAbnLookup = async (rawAbn: string) => {
@@ -316,6 +339,7 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack }) => {
         ["Phone", formData.phone],
         ["Website", formData.website],
         ["Address", formData.businessAddress],
+        ["Installer Certifications", (formData.installerCertifications || []).join(", ")],
       ],
       styles: { fontSize: 10 },
       headStyles: { fillColor: [10, 196, 50] },
@@ -438,36 +462,51 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack }) => {
       if (formData.taxInvoiceTemplate)
         docs.push(`<a href="${formData.taxInvoiceTemplate}" target="_blank">Tax Invoice Template</a>`);
 
-      // 4️⃣ Admin Email
+     // ✅ Send email to admin
+if (false) {
+await fetch("https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    to: "admin@asls.net.au", // change to your verified admin address
+    subject: `New Vendor Application: ${formData.businessName || "Unknown Vendor"}`,
+    text: `
+A new vendor has submitted their application.
+
+Business Name: ${formData.businessName || "N/A"}
+Contact Person: ${formData.contactName || "N/A"}
+Email: ${formData.email || "N/A"}
+Phone: ${formData.phone || "N/A"}
+
+Please log in to the ASLS Vendor Portal for full details.
+    `.trim(),
+    html: `
+      <h2>New Vendor Application Submitted</h2>
+      <p><strong>Business Name:</strong> ${formData.businessName || "N/A"}</p>
+      <p><strong>Contact:</strong> ${formData.contactName || "N/A"}</p>
+      <p><strong>Email:</strong> ${formData.email || "N/A"}</p>
+      <p><strong>Phone:</strong> ${formData.phone || "N/A"}</p>
+      <p>Log in to the ASLS Vendor Portal to review.</p>
+    `.trim(),
+  }),
+});
+}
+
+
+
       const adminEmailPayload = {
         to: ["john@worldmachine.com.au", "admin@asls.net.au"],
-        subject: `New Vendor Submission – ${formData.businessName}`,
+        subject: `ASLS Vendor Intake - ${formData.businessName || "New submission"}`,
+        text: `PDF: ${pdfUrl}\n\n${JSON.stringify(formData, null, 2)}`,
         html: `
           <h2>New Vendor Intake Submission</h2>
-          <p><strong>Business Name:</strong> ${formData.businessName}</p>
-          <p><strong>Email:</strong> ${formData.email}</p>
-          <p><strong>Phone:</strong> ${formData.phone}</p>
-          <p><strong>Website:</strong> ${formData.website}</p>
-          <p><strong>Address:</strong> ${formData.businessAddress}</p>
-
-          <hr/>
-          <h3>📄 Vendor Form PDF</h3>
-          <a href="${pdfUrl}" target="_blank">View Vendor Summary</a>
-
-          ${
-            licenceSections.length
-              ? `<hr/><h3>Driver Licences</h3>${licenceSections.join("<br><br>")}`
-              : ""
-          }
-
-          ${
-            docs.length
-              ? `<hr/><h3>Supporting Documents</h3>${docs.join("<br>")}`
-              : ""
-          }
-
-          <hr/>
-          <p><em>Submitted via ASLS Vendor Portal</em></p>
+          <p><strong>Business Name:</strong> ${formData.businessName || "N/A"}</p>
+          <p><strong>ABN:</strong> ${formData.abnNumber || "N/A"}</p>
+          <p><strong>Entity Type:</strong> ${formData.entityType || "N/A"}</p>
+          <p><strong>Signed By:</strong> ${formData.signatureName || "N/A"} on ${formData.signatureDate || "N/A"}</p>
+          <p><strong>PDF Link:</strong> <a href="${pdfUrl}" target="_blank">${pdfUrl}</a></p>
+          ${licenceSections.length ? `<h3>Licence Images</h3>${licenceSections.join("<br><br>")}` : ""}
+          ${docs.length ? `<h3>Supporting Documents</h3><p>${docs.join("<br>")}</p>` : ""}
         `,
       };
 
@@ -625,23 +664,64 @@ Australian Solar Lending Solutions
               </select>
             </div>
 
-            {(formData.entityType === "Company" || formData.entityType === "Trust") && (
-              <div>
-                <label className="font-semibold text-gray-700">Date of Incorporation*</label>
-                <input
-                  type="text"
-                  placeholder="DD/MM/YYYY"
-                  name="dateOfIncorporation"
-                  value={formData.dateOfIncorporation}
-                  onChange={handleDateChange}
-                  className="w-full border rounded-lg p-3"
-                  required
-                />
-              </div>
-            )}
+          {(formData.entityType === "Company" || formData.entityType === "Trust") && (
+            <div>
+              <label className="font-semibold text-gray-700">Date of Incorporation*</label>
+              <input
+                type="text"
+                placeholder="DD/MM/YYYY"
+                name="dateOfIncorporation"
+                value={formData.dateOfIncorporation}
+                onChange={handleDateChange}
+                className="w-full border rounded-lg p-3"
+                required
+              />
+            </div>
+          )}
+            
           </div>
 
+          {/* Installer Certifications (moved under Email/Website) */}
+          {false && (<div className="mt-4">
+            <label className="font-semibold text-gray-700">Installer Certifications (select all that apply)</label>
+            <div className="mt-2 flex flex-col sm:flex-row sm:flex-wrap gap-3">
+              {["NETCC", "CAA", "Clean Energy Council Certified Installer"].map((opt) => (
+                <label key={opt} className="inline-flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.installerCertifications.includes(opt)}
+                    onChange={(e) =>
+                      setFormData((prev: any) => ({
+                        ...prev,
+                        installerCertifications: e.target.checked
+                          ? [...prev.installerCertifications, opt]
+                          : prev.installerCertifications.filter((v: string) => v !== opt),
+                      }))
+                    }
+                  />
+                  <span>{opt}</span>
+                </label>
+              ))}
+            </div>
+          </div>)}
+
           {/* 📞 Contact Info */}
+          {/* Business Address */}
+          <div>
+            <label className="font-semibold text-gray-700">Business Address*</label>
+            <input
+              id="businessAddress"
+              type="text"
+              name="businessAddress"
+              placeholder="Start typing to search address..."
+              value={formData.businessAddress}
+              onChange={handleChange}
+              className="w-full border rounded-lg p-3"
+              required
+            />
+          </div>
+
+          {/* Contact Info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
             <div>
               <label className="font-semibold text-gray-700">Phone Number*</label>
@@ -694,17 +774,31 @@ Australian Solar Lending Solutions
 
           {/* 🏠 Business Address */}
           <div>
-            <label className="font-semibold text-gray-700">Business Address*</label>
-            <input
-              id="businessAddress"
-              type="text"
-              name="businessAddress"
-              placeholder="Start typing to search address..."
-              value={formData.businessAddress}
-              onChange={handleChange}
-              className="w-full border rounded-lg p-3"
-              required
-            />
+            {/* Installer Certifications (after Email & Website) */}
+            <div className="mt-4">
+              <label className="font-semibold text-gray-700">Installer Certifications (select all that apply)</label>
+              <div className="mt-2 flex flex-col sm:flex-row sm:flex-wrap gap-3">
+                {["NETCC", "CAA", "Clean Energy Council Certified Installer"].map((opt) => (
+                  <label key={opt} className="inline-flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.installerCertifications.includes(opt)}
+                      onChange={(e) =>
+                        setFormData((prev: any) => ({
+                          ...prev,
+                          installerCertifications: e.target.checked
+                            ? [...prev.installerCertifications, opt]
+                            : prev.installerCertifications.filter((v: string) => v !== opt),
+                        }))
+                      }
+                    />
+                    <span>{opt}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Business Address moved to the Business Details section above */}
           </div>
 
           {/* 👤 Directors */}
