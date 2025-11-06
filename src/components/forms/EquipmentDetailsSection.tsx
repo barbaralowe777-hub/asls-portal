@@ -82,13 +82,13 @@ const EquipmentDetailsSection: React.FC<EquipmentDetailsSectionProps> = ({
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Asset *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">System Size *</label>
               <input
                 type="text"
                 value={item.asset}
                 onChange={(e) => updateEquipmentItem(index, 'asset', e.target.value)}
                 required
-                placeholder="e.g., Solar Panel 450W"
+                placeholder="eg Solar Panels 300kW"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
               />
             </div>
@@ -155,13 +155,7 @@ const EquipmentDetailsSection: React.FC<EquipmentDetailsSectionProps> = ({
               />
             </div>
             
-            <div className="md:col-span-2 bg-white p-3 rounded border border-gray-200">
-              <p className="text-sm text-gray-600">
-                Total for this item: <span className="font-semibold text-gray-900">
-                  ${((parseFloat(item.unitPrice) || 0) * (parseInt(item.quantity) || 0)).toFixed(2)}
-                </span>
-              </p>
-            </div>
+            {/* Per-item total removed as requested */}
           </div>
         </div>
       ))}

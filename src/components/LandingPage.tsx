@@ -82,19 +82,19 @@ const LandingPage: React.FC = () => {
               {/* Login Buttons */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                 <button
-                  onClick={() => navigate("/vendor-login")}
+                  onClick={() => navigate("/login")}
                   className="bg-white text-[#1dad21] px-6 py-4 rounded-lg font-semibold border-2 border-[#1dad21] hover:bg-green-50 transition shadow-sm hover:shadow-md"
                 >
                   Vendor Login
                 </button>
                 <button
-                  oonClick={() => navigate("/agent-login")}
+                  onClick={() => navigate("/login")}
                   className="bg-white text-[#1dad21] px-6 py-4 rounded-lg font-semibold border-2 border-[#1dad21] hover:bg-green-50 transition shadow-sm hover:shadow-md"
                 >
                   Agents Login
                 </button>
                 <button
-                  onClick={() => navigate("/admin-login")}
+                  onClick={() => navigate("/login")}
                   className="bg-[#D4AF37] text-white px-6 py-4 rounded-lg font-semibold hover:bg-yellow-600 transition shadow-sm hover:shadow-md"
                 >
                   Admin Login

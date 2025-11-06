@@ -100,6 +100,31 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack }) => {
     installerCertifications: [] as string[],
   });
 
+  // Load saved draft by id or draftId
+  useEffect(() => {
+    const id = (searchParams.get("id") || searchParams.get("draftId")) ?? null;
+    if (!id) return;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("vendor_drafts")
+          .select("formData")
+          .eq("id", id)
+          .single();
+        if (error) throw error;
+        if (data?.formData) {
+          setFormData((prev: any) => ({
+            ...prev,
+            ...data.formData,
+          }));
+          setSavedId(id);
+        }
+      } catch (e) {
+        console.error("Failed to load saved draft", e);
+      }
+    })();
+  }, [searchParams]);
+
   // -------------------- GOOGLE MAPS AUTOCOMPLETE --------------------
 useEffect(() => {
   loadGoogleMapsScript(() => {
@@ -237,6 +262,13 @@ useEffect(() => {
     try {
       const url = await uploadFile(file, "vendor_uploads");
       setFormData((prev: any) => ({ ...prev, [field]: url }));
+      if (savedId) {
+        try {
+          await supabase.from("vendor_drafts").update({ formData: { ...formData, [field]: url } }).eq("id", savedId);
+        } catch (e) {
+          console.warn("Draft update failed after upload", e);
+        }
+      }
       console.log(`✅ Uploaded ${field}`);
     } catch (err) {
       console.error("❌ Upload error", err);
@@ -251,7 +283,11 @@ useEffect(() => {
       setFormData((prev: any) => {
         const directors = [...prev.directors];
         directors[dirIndex - 1][`${field}Url`] = url;
-        return { ...prev, directors };
+        const updated = { ...prev, directors };
+        if (savedId) {
+          supabase.from("vendor_drafts").update({ formData: updated }).eq("id", savedId).catch(() => {});
+        }
+        return updated;
       });
       console.log(`✅ Uploaded ${field} for Director ${dirIndex}`);
     } catch (err) {
@@ -278,7 +314,7 @@ useEffect(() => {
         setSavedId(draft);
       }
 
-      const resumeLink = `${window.location.origin}/vendor-intake?draftId=${draft}`;
+      const resumeLink = `${window.location.origin}/vendor-intake?id=${draft}`;
       const emailPayload = {
         to: [formData.email],
         subject: "Your Saved Vendor Application – Resume Anytime",

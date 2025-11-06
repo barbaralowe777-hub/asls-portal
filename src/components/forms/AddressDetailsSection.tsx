@@ -21,7 +21,7 @@ const AddressDetailsSection: React.FC<AddressDetailsSectionProps> = ({
 }) => {
   return (
     <div className="border-b pb-8">
-      <h2 className="text-xl font-semibold mb-6 text-gray-800">ADDRESS DETAILS</h2>
+      <h2 className="text-xl font-semibold mb-6 text-gray-800">INSTALLATION ADDRESS DETAILS</h2>
       <div className="grid md:grid-cols-2 gap-6">
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -32,6 +32,7 @@ const AddressDetailsSection: React.FC<AddressDetailsSectionProps> = ({
             <input
               type="text"
               name="streetAddress"
+              id="streetAddress"
               value={formData.streetAddress}
               onChange={handleChange}
               onBlur={handleAddressVerify}

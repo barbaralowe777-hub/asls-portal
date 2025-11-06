@@ -1,19 +1,13 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, Filter, Download, Eye, Plus } from 'lucide-react';
 import { Application } from '@/types';
 import { mockApplications } from '@/data/mockData';
 import StatusBadge from "@/components/StatusBadge";
 import AuthGuard from '@/components/AuthGuard'; // ✅ add this line
 
-interface VendorDashboardProps {
-  onNewApplication: () => void;
-  onViewApplication: (id: string) => void;
-}
-
-const VendorDashboard: React.FC<VendorDashboardProps> = ({
-  onNewApplication,
-  onViewApplication,
-}) => {
+const VendorDashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [applications, setApplications] = useState<Application[]>(mockApplications);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -98,7 +92,7 @@ const VendorDashboard: React.FC<VendorDashboardProps> = ({
               </p>
             </div>
             <button
-              onClick={onNewApplication}
+              onClick={() => navigate('/application-form')}
               className="bg-[#1dad21] text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition flex items-center"
             >
               <Plus className="w-5 h-5 mr-2" />

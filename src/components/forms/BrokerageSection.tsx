@@ -40,7 +40,7 @@ const BrokerageSection: React.FC<BrokerageSectionProps> = ({
       <h2 className="text-xl font-semibold mb-6 text-gray-800">SELECT BROKERAGE AND TERM</h2>
       <div className="grid md:grid-cols-2 gap-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Invoice Amount (Ex GST) $ *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Invoice Amount (Incl GST) $ *</label>
           <input
             type="number"
             name="invoiceAmount"
@@ -67,7 +67,33 @@ const BrokerageSection: React.FC<BrokerageSectionProps> = ({
             <option value="48">48 months</option>
             <option value="60">60 months</option>
             <option value="72">72 months</option>
+            <option value="84">84 months</option>
           </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Deposit Paid $</label>
+          <input
+            type="number"
+            name="depositPaid"
+            value={formData.depositPaid || ''}
+            onChange={handleChange}
+            min="0"
+            step="0.01"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Amount of Finance Requested (Incl GST) $</label>
+          <input
+            type="number"
+            name="financeAmount"
+            value={formData.financeAmount || ''}
+            onChange={handleChange}
+            min="0"
+            step="0.01"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 bg-gray-50"
+            readOnly
+          />
         </div>
       </div>
 
@@ -156,15 +182,20 @@ const BrokerageSection: React.FC<BrokerageSectionProps> = ({
                 />
                 <label htmlFor="supportingDocs" className="cursor-pointer">
                   <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                  <p className="text-sm text-gray-600">
-                    {files.supportingDocs ? `${selectedDocType}: ${files.supportingDocs.name}` : 'Upload Documents'}
-                  </p>
+                  <p className="text-sm text-gray-600">Upload Documents</p>
                   <p className="text-xs text-gray-500 mt-1">
                     Select type above, then upload
                   </p>
                 </label>
               </div>
             </div>
+            {Array.isArray(files.supportingDocs) && files.supportingDocs.length > 0 && (
+              <ul className="mt-3 text-sm text-gray-700 list-disc pl-5">
+                {files.supportingDocs.map((d: any, idx: number) => (
+                  <li key={idx}>{d.type ? `${d.type}: ` : ''}{d.name || d.file?.name}</li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       </div>

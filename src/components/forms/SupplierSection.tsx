@@ -16,6 +16,26 @@ const SupplierSection: React.FC<SupplierSectionProps> = ({
     <div className="border-b pb-8">
       <h2 className="text-xl font-semibold mb-6 text-gray-800">SUPPLIER IDENTIFICATION</h2>
       <div className="grid md:grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Vendor ID</label>
+          <input
+            type="text"
+            name="vendorId"
+            value={formData.vendorId || ''}
+            onChange={handleChange}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Vendor Name</label>
+          <input
+            type="text"
+            name="vendorName"
+            value={formData.vendorName || ''}
+            onChange={handleChange}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+          />
+        </div>
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Is The Supplier Accredited with the Lender? *

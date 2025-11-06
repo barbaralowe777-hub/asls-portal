@@ -59,18 +59,32 @@ const BusinessDetailsSection: React.FC<BusinessDetailsSectionProps> = ({
         </div>
 
         <div>
-          <label className="font-semibold text-gray-700">
-            Entity Type
-          </label>
-          <input
-            type="text"
+          <label className="font-semibold text-gray-700">Entity Type</label>
+          <select
             name="entityType"
             value={formData.entityType}
             onChange={handleChange}
-            className="w-full border rounded-lg p-3 bg-gray-100"
-            readOnly
-          />
+            className="w-full border rounded-lg p-3"
+          >
+            <option value="">Please Select</option>
+            <option value="Sole Trader">Sole Trader</option>
+            <option value="Company">Company</option>
+            <option value="Trust">Trust</option>
+          </select>
         </div>
+
+        {(formData.entityType === 'Company' || formData.entityType === 'Trust') && (
+          <div>
+            <label className="font-semibold text-gray-700">Date of Incorporation</label>
+            <input
+              type="date"
+              name="dateOfIncorporation"
+              value={formData.dateOfIncorporation || ''}
+              onChange={handleChange}
+              className="w-full border rounded-lg p-3"
+            />
+          </div>
+        )}
 
         <div>
           <label className="font-semibold text-gray-700">
@@ -101,9 +115,19 @@ const BusinessDetailsSection: React.FC<BusinessDetailsSectionProps> = ({
         </div>
 
         <div>
-          <label className="font-semibold text-gray-700">
-            Website
-          </label>
+          <label className="font-semibold text-gray-700">Email</label>
+          <input
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            placeholder="example@example.com"
+            className="w-full border rounded-lg p-3"
+          />
+        </div>
+
+        <div>
+          <label className="font-semibold text-gray-700">Website</label>
           <input
             type="text"
             name="website"
@@ -115,30 +139,78 @@ const BusinessDetailsSection: React.FC<BusinessDetailsSectionProps> = ({
         </div>
 
         <div>
-          <label className="font-semibold text-gray-700">
-            Industry Type
-          </label>
-          <input
-            type="text"
+          <label className="font-semibold text-gray-700">Industry Type</label>
+          <select
             name="industryType"
             value={formData.industryType}
             onChange={handleChange}
-            placeholder="e.g. Solar Installation"
             className="w-full border rounded-lg p-3"
-          />
+          >
+            <option value="">Please Select</option>
+            <option>Agriculture, Forestry and Fishing</option>
+            <option>Mining and Quarrying</option>
+            <option>Food and Beverage Manufacturing</option>
+            <option>Fabricated Metal Product Manufacturing</option>
+            <option>Machinery and Equipment Manufacturing</option>
+            <option>Wood, Paper and Printing</option>
+            <option>Plastics, Rubber and Chemical Manufacturing</option>
+            <option>Building Construction</option>
+            <option>Civil Construction and Earthmoving</option>
+            <option>Electrical, Plumbing and Air Conditioning Services</option>
+            <option>Landscaping and Fencing</option>
+            <option>Painting, Plastering and Other Finishing Trades</option>
+            <option>Road Freight Transport</option>
+            <option>Passenger Transport (Bus, Taxi, Charter, Rideshare)</option>
+            <option>Warehousing and Storage</option>
+            <option>Courier and Delivery Services</option>
+            <option>Transport Support Services (Tow, Pilot, etc.)</option>
+            <option>Motor Vehicle and Parts Retailing</option>
+            <option>Hardware and Building Supplies</option>
+            <option>Fuel Retailing</option>
+            <option>Electrical and Electronic Goods Retailing</option>
+            <option>Wholesale Trade (Machinery, Industrial Equipment, Food, etc.)</option>
+            <option>Accounting and Bookkeeping</option>
+            <option>Legal Services</option>
+            <option>Management Consulting</option>
+            <option>Real Estate and Property Management</option>
+            <option>Engineering and Architecture</option>
+            <option>Medical, Dental and Allied Health</option>
+            <option>Aged Care and Disability Services</option>
+            <option>Childcare and Early Education</option>
+            <option>Community and Social Assistance</option>
+            <option>Accommodation (Hotels, Motels, Caravan Parks)</option>
+            <option>Food and Beverage (Restaurants, Cafés, Takeaway)</option>
+            <option>Events and Entertainment Services</option>
+            <option>Travel Agencies and Tour Operators</option>
+            <option>IT Services and Software Development</option>
+            <option>Telecommunications</option>
+            <option>Internet and Data Services</option>
+            <option>Digital Marketing and Media</option>
+            <option>Primary and Secondary Education</option>
+            <option>Vocational and Tertiary Education</option>
+            <option>Training and Certification Providers</option>
+            <option>Government Administration</option>
+            <option>Religious and Charitable Organisations</option>
+            <option>Emergency and Security Services</option>
+            <option>Farming and Livestock</option>
+            <option>Agricultural Machinery Sales and Service</option>
+            <option>Veterinary Services</option>
+            <option>Produce and Feed Supply</option>
+            <option>Financial Services (Brokers, Advisors, Lenders)</option>
+            <option>Insurance Agencies and Underwriting</option>
+            <option>Superannuation and Investment Firms</option>
+          </select>
         </div>
 
         <div className="col-span-1 sm:col-span-2">
-          <label className="font-semibold text-gray-700">
-            Additional Info
-          </label>
+          <label className="font-semibold text-gray-700">Narrative of Customer</label>
           <textarea
             name="additionalInfo"
             value={formData.additionalInfo}
             onChange={handleChange}
             rows={3}
             className="w-full border rounded-lg p-3"
-            placeholder="Any extra notes or details..."
+            placeholder="ie family business, industry experience, extenuating circumstances that may affect this loan etc"
           />
         </div>
       </div>
