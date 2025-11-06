@@ -321,83 +321,157 @@ useEffect(() => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
 
-    // Header
+    // Logos
+    try {
+      const aslsLogo = await fetch("/ASLS-logo.png").then((res) => res.blob());
+      const wmmLogo = await fetch("/World-Machine-Money-Logo.png").then((res) => res.blob());
+      const aslsImg = await readAsBase64(aslsLogo);
+      const wmmImg = await readAsBase64(wmmLogo);
+      const logoWidth = 40;
+      const spacing = 15;
+      const totalWidth = logoWidth * 2 + spacing;
+      const startX = (pageWidth - totalWidth) / 2;
+      doc.addImage(aslsImg, "PNG", startX, 10, logoWidth, 20);
+      doc.addImage(wmmImg, "PNG", startX + logoWidth + spacing, 10, logoWidth, 20);
+    } catch {}
+
     doc.setFontSize(16);
-    doc.text("ASLS Vendor Intake Form", pageWidth / 2, 20, { align: "center" });
+    doc.text("ASLS Vendor Intake Form", pageWidth / 2, 40, { align: "center" });
 
     // Business Details
     doc.setFontSize(14);
-    doc.text("Business Details", 14, 30);
+    doc.text("Business Details", 14, 55);
     autoTable(doc, {
-      startY: 35,
+      startY: 60,
       head: [["Field", "Information"]],
       body: [
-        ["ABN", formData.abnNumber],
-        ["Business Name", formData.businessName],
-        ["Entity Type", formData.entityType],
-        ["Email", formData.email],
-        ["Phone", formData.phone],
-        ["Website", formData.website],
-        ["Address", formData.businessAddress],
+        ["ABN Number", formData.abnNumber || ""],
+        ["Business Name", formData.businessName || ""],
+        ["Entity Type", formData.entityType || ""],
+        ["Phone", formData.phone || ""],
+        ["Mobile", formData.mobile || ""],
+        ["Email", formData.email || ""],
+        ["Website", formData.website || ""],
+        ["Business Address", formData.businessAddress || ""],
+        ["Date of Incorporation", formData.dateOfIncorporation || ""],
         ["Installer Certifications", (formData.installerCertifications || []).join(", ")],
       ],
       styles: { fontSize: 10 },
-      headStyles: { fillColor: [10, 196, 50] },
+      headStyles: { fillColor: [60, 179, 113] },
     });
 
     // Directors
     const directors = formData.directors || [];
-    doc.text("Directors", 14, doc.lastAutoTable.finalY + 10);
+    doc.setFontSize(14);
+    doc.text("Directors", 14, (doc as any).lastAutoTable.finalY + 10);
     autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 15,
-      head: [["Name", "DOB", "Address", "Licence #", "State", "Expiry"]],
+      startY: (doc as any).lastAutoTable.finalY + 15,
+      head: [["Name", "Phone", "Mobile", "Residential Address", "Licence #", "State", "Expiry"]],
       body: directors.map((d: any) => [
-        `${d.firstName} ${d.middleName} ${d.surname}`,
-        d.dob,
-        d.address,
-        d.licenceNumber,
-        d.licenceState,
-        d.licenceExpiry,
+        `${d.firstName} ${d.middleName} ${d.surname}`.trim(),
+        d.phone || "",
+        d.mobile || "",
+        d.address || "",
+        d.licenceNumber || "",
+        d.licenceState || "",
+        d.licenceExpiry || "",
       ]),
+      styles: { fontSize: 10 },
+      headStyles: { fillColor: [100, 149, 237] },
+    });
+
+    // Uploaded Documents (with clickable links)
+    doc.setFontSize(14);
+    doc.text("Uploaded Documents", 14, (doc as any).lastAutoTable.finalY + 10);
+    const uploadedDocs: { label: string; url?: string }[] = [
+      { label: "Certificate / Trust Deed", url: formData.certificateFiles },
+      { label: "Bank Statement", url: formData.bankStatement },
+      { label: "Tax Invoice Template", url: formData.taxInvoiceTemplate },
+    ];
+    (formData.directors || []).forEach((d: any, i: number) => {
+      if (d.licenceFrontUrl) uploadedDocs.push({ label: `Licence Front (Director ${i + 1})`, url: d.licenceFrontUrl });
+      if (d.licencePhotoUrl) uploadedDocs.push({ label: `Licence Back (Director ${i + 1})`, url: d.licencePhotoUrl });
+    });
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 15,
+      head: [["Document Type", "File"]],
+      body: uploadedDocs.map((d) => [d.label, d.url ? `View File` : "Not uploaded"]),
+      styles: { fontSize: 10, minCellHeight: 10, valign: "middle" },
+      headStyles: { fillColor: [120, 120, 120] },
+      didDrawCell: (data: any) => {
+        if (data.column.index === 1 && data.cell.raw === "View File") {
+          const docItem = uploadedDocs[data.row.index];
+          if (docItem.url) {
+            doc.setTextColor(0, 0, 255);
+            doc.textWithLink("View File", data.cell.x + 2, data.cell.y + 6, { url: docItem.url });
+            doc.setTextColor(0, 0, 0);
+          }
+        }
+      },
+    });
+
+    // Solar Equipment
+    const listToString = (list: string[]) => (list?.length ? list.join(", ") : "None");
+    doc.setFontSize(14);
+    doc.text("Solar Equipment", 14, (doc as any).lastAutoTable.finalY + 10);
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 15,
+      body: [
+        ["Panels", listToString(formData.solarPanels)],
+        ["Inverters", listToString(formData.inverters)],
+        ["Batteries", listToString(formData.batteries)],
+      ],
       styles: { fontSize: 10 },
     });
 
     // Banking
-    doc.text("Banking Details", 14, doc.lastAutoTable.finalY + 10);
+    doc.setFontSize(14);
+    doc.text("Banking Details", 14, (doc as any).lastAutoTable.finalY + 10);
     autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 15,
+      startY: (doc as any).lastAutoTable.finalY + 15,
       body: [
-        ["Account Name", formData.accountName],
-        ["BSB", formData.bsb],
-        ["Account Number", formData.accountNumber],
+        ["Account Name", formData.accountName || ""],
+        ["BSB", formData.bsb || ""],
+        ["Account Number", formData.accountNumber || ""],
       ],
       styles: { fontSize: 10 },
     });
 
-    // Agreement
-    doc.text("Agreement", 14, doc.lastAutoTable.finalY + 10);
+    // Agreement + Signature
+    doc.setFontSize(14);
+    doc.text("Agreement", 14, (doc as any).lastAutoTable.finalY + 10);
     autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 15,
+      startY: (doc as any).lastAutoTable.finalY + 15,
       body: [
-        ["Terms Accepted", formData.tcsAccepted ? "Yes" : "No"],
-        ["Signed By", formData.signatureName],
-        ["Date Signed", formData.signatureDate],
+        ["Terms Accepted", formData.tcsAccepted ? "✅ Yes" : "❌ No"],
+        ["Signed By", formData.signatureName || ""],
+        ["Date Signed", formData.signatureDate || ""],
       ],
       styles: { fontSize: 10 },
     });
+    if (formData.signatureName) {
+      doc.setFontSize(12);
+      doc.text(`Signed by: ${formData.signatureName}`, 14, (doc as any).lastAutoTable.finalY + 25);
+      doc.text(`Date: ${formData.signatureDate || ""}`, 14, (doc as any).lastAutoTable.finalY + 32);
+    }
+
+    doc.setFontSize(10);
+    doc.text("Generated automatically by ASLS Vendor Portal", pageWidth / 2, 285, { align: "center" });
 
     const pdfBlob = doc.output("blob");
 
-    // Merge Terms & Conditions
+    // Merge Terms & Conditions PDF
     const termsResponse = await fetch("/terms-and-conditions.pdf");
     const termsBytes = await termsResponse.arrayBuffer();
     const mainPdf = await PDFLib.PDFDocument.load(await pdfBlob.arrayBuffer());
     const termsPdf = await PDFLib.PDFDocument.load(termsBytes);
-    const copied = await mainPdf.copyPages(termsPdf, termsPdf.getPageIndices());
-    copied.forEach((page) => mainPdf.addPage(page));
+    const copiedPages = await mainPdf.copyPages(termsPdf, termsPdf.getPageIndices());
+    copiedPages.forEach((page) => mainPdf.addPage(page));
 
-    const finalBytes = await mainPdf.save();
-    return { pdfBlob: new Blob([finalBytes], { type: "application/pdf" }) };
+    const finalPdfBytes = await mainPdf.save();
+    const finalPdfBlob = new Blob([finalPdfBytes], { type: "application/pdf" });
+    const pdfBase64 = await blobToBase64(finalPdfBlob);
+    return { pdfBlob: finalPdfBlob, pdfBase64 };
   };
 
   // -------------------- HELPERS --------------------
@@ -495,7 +569,7 @@ Please log in to the ASLS Vendor Portal for full details.
 
 
       const adminEmailPayload = {
-        to: ["john@worldmachine.com.au", "admin@asls.net.au"],
+        to: ["john@asls.net.au", "admin@asls.net.au"],
         subject: `ASLS Vendor Intake - ${formData.businessName || "New submission"}`,
         text: `PDF: ${pdfUrl}\n\n${JSON.stringify(formData, null, 2)}`,
         html: `
