@@ -14,6 +14,16 @@ export default function AuthGuard({ allowedRoles, children }: AuthGuardProps) {
 
   useEffect(() => {
     const checkAuth = async () => {
+      // Demo bypass: allow access when ?demo=1 or VITE_DEMO_NO_BACKEND=1
+      try {
+        const isDemo = new URLSearchParams(window.location.search).get('demo') === '1'
+          || (import.meta as any).env?.VITE_DEMO_NO_BACKEND === '1';
+        if (isDemo) {
+          setLoading(false);
+          return;
+        }
+      } catch {}
+
       // Check session
       const { data: { session } } = await supabase.auth.getSession();
 

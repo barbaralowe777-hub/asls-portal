@@ -147,58 +147,14 @@ const BusinessDetailsSection: React.FC<BusinessDetailsSectionProps> = ({
             className="w-full border rounded-lg p-3"
           >
             <option value="">Please Select</option>
-            <option>Agriculture, Forestry and Fishing</option>
-            <option>Mining and Quarrying</option>
-            <option>Food and Beverage Manufacturing</option>
-            <option>Fabricated Metal Product Manufacturing</option>
-            <option>Machinery and Equipment Manufacturing</option>
-            <option>Wood, Paper and Printing</option>
-            <option>Plastics, Rubber and Chemical Manufacturing</option>
-            <option>Building Construction</option>
-            <option>Civil Construction and Earthmoving</option>
-            <option>Electrical, Plumbing and Air Conditioning Services</option>
-            <option>Landscaping and Fencing</option>
-            <option>Painting, Plastering and Other Finishing Trades</option>
-            <option>Road Freight Transport</option>
-            <option>Passenger Transport (Bus, Taxi, Charter, Rideshare)</option>
-            <option>Warehousing and Storage</option>
-            <option>Courier and Delivery Services</option>
-            <option>Transport Support Services (Tow, Pilot, etc.)</option>
-            <option>Motor Vehicle and Parts Retailing</option>
-            <option>Hardware and Building Supplies</option>
-            <option>Fuel Retailing</option>
-            <option>Electrical and Electronic Goods Retailing</option>
-            <option>Wholesale Trade (Machinery, Industrial Equipment, Food, etc.)</option>
-            <option>Accounting and Bookkeeping</option>
-            <option>Legal Services</option>
-            <option>Management Consulting</option>
-            <option>Real Estate and Property Management</option>
-            <option>Engineering and Architecture</option>
-            <option>Medical, Dental and Allied Health</option>
-            <option>Aged Care and Disability Services</option>
-            <option>Childcare and Early Education</option>
-            <option>Community and Social Assistance</option>
-            <option>Accommodation (Hotels, Motels, Caravan Parks)</option>
-            <option>Food and Beverage (Restaurants, Cafés, Takeaway)</option>
-            <option>Events and Entertainment Services</option>
-            <option>Travel Agencies and Tour Operators</option>
-            <option>IT Services and Software Development</option>
-            <option>Telecommunications</option>
-            <option>Internet and Data Services</option>
-            <option>Digital Marketing and Media</option>
-            <option>Primary and Secondary Education</option>
-            <option>Vocational and Tertiary Education</option>
-            <option>Training and Certification Providers</option>
-            <option>Government Administration</option>
-            <option>Religious and Charitable Organisations</option>
-            <option>Emergency and Security Services</option>
-            <option>Farming and Livestock</option>
-            <option>Agricultural Machinery Sales and Service</option>
-            <option>Veterinary Services</option>
-            <option>Produce and Feed Supply</option>
-            <option>Financial Services (Brokers, Advisors, Lenders)</option>
-            <option>Insurance Agencies and Underwriting</option>
-            <option>Superannuation and Investment Firms</option>
+            <option value="General">General</option>
+            <option value="Beauty">Beauty</option>
+            <option value="Gym">Gym</option>
+            <option value="Hospitality">Hospitality</option>
+            <option value="Retail">Retail</option>
+            <option value="Transport">Transport</option>
+            <option value="Construction">Construction</option>
+            <option value="Other">Other</option>
           </select>
         </div>
 
@@ -243,3 +199,4 @@ const BusinessDetailsSection: React.FC<BusinessDetailsSectionProps> = ({
 };
 
 export default BusinessDetailsSection;
+

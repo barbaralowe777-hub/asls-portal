@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import BusinessDetailsSection from "./forms/BusinessDetailsSection";
@@ -11,7 +12,7 @@ import autoTable from "jspdf-autotable";
 import * as PDFLib from "pdf-lib";
 /* global google */
 
-// ✅ Load Google Maps API once
+// Load Google Maps API once
 const loadGoogleMapsScript = (callback: () => void) => {
   if (window.google && window.google.maps) {
     callback();
@@ -29,6 +30,7 @@ const loadGoogleMapsScript = (callback: () => void) => {
   }&libraries=places`;
   script.async = true;
   script.defer = true;
+  try { (script as any).loading = 'async'; } catch {}
   script.onload = callback;
   document.body.appendChild(script);
 };
@@ -44,6 +46,8 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
   const [loading, setLoading] = useState(false);
   const [successId, setSuccessId] = useState<string | null>(null);
   const [vendorId, setVendorId] = useState<string | null>(null);
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [createdAppId, setCreatedAppId] = useState<string | null>(null);
   const [abnLoading, setAbnLoading] = useState(false);
   const [supplierAbnLoading, setSupplierAbnLoading] = useState(false);
   const [addressLoading, setAddressLoading] = useState(false);
@@ -108,12 +112,67 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
     term: "",
   });
 
+  // Repayments estimate (demo and live)
+  const [repaymentIndustry, setRepaymentIndustry] = useState<string>("General");
+  const [monthlyRepayment, setMonthlyRepayment] = useState<number | null>(null);
+  const isDemo = useMemo(
+    () => new URLSearchParams(window.location.search).get('demo') === '1' || import.meta.env.VITE_DEMO_NO_BACKEND === '1',
+    []
+  );
+
+  const DOC_FEE = 385; // kept for info; not used in calc below
+  const UPLIFT_INDUSTRIES = ["Beauty", "Gym", "Hospitality"]; // +1% uplift
+  const getBaseRate = (amount: number): number => {
+    if (amount <= 20000) return 11.9;
+    if (amount <= 35000) return 10.9;
+    if (amount <= 50000) return 9.9;
+    return 9.5;
+  };
+  const recalcRepayment = (amountStr?: string, termStr?: string, industryStr?: string) => {
+    const amountSource = (amountStr ?? formData.financeAmount ?? "0");
+    const amount = parseFloat(String(amountSource)) || 0;
+    const monthsSource = (termStr ?? formData.term ?? "0");
+    const months = parseInt(String(monthsSource), 10) || 0;
+    const industry = (industryStr ?? repaymentIndustry) ?? "General";
+    if (!amount || !months) { setMonthlyRepayment(null); return; }
+    let rate = getBaseRate(amount);
+    if (UPLIFT_INDUSTRIES.includes(industry)) rate += 1;
+    const monthlyRate = rate / 100 / 12;
+    const monthly = (amount * monthlyRate * Math.pow(1 + monthlyRate, months)) / (Math.pow(1 + monthlyRate, months) - 1);
+    setMonthlyRepayment(monthly);
+  };
+
+  useEffect(() => {
+    recalcRepayment();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.financeAmount, formData.term, repaymentIndustry]);
+
   const abnDebounceRef = useRef<number | null>(null);
   const supplierAbnDebounceRef = useRef<number | null>(null);
+  const navigate = useNavigate();
+
+  // Derive repayment industry from selected industryType when available
+  useEffect(() => {
+    const t = (formData.industryType || "").toLowerCase();
+    const map: Record<string, string> = {
+      beauty: "Beauty",
+      gym: "Gym",
+      hospitality: "Hospitality",
+      retail: "Retail",
+      transport: "Transport",
+      construction: "Construction",
+    };
+    for (const key of Object.keys(map)) {
+      if (t.includes(key)) { setRepaymentIndustry(map[key]); recalcRepayment(); return; }
+    }
+    setRepaymentIndustry("General");
+    recalcRepayment();
+  }, [formData.industryType]);
   
   // Load vendor_id from the logged-in profile
   useEffect(() => {
     (async () => {
+      if (isDemo) return;
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
@@ -173,6 +232,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
       }
       return next;
     });
+    // repayment recalculation is handled by useEffect on financeAmount/term/repaymentIndustry
     if (name === "abnNumber" && digitsOnly(value).length === 11) {
       if (abnDebounceRef.current) window.clearTimeout(abnDebounceRef.current);
       abnDebounceRef.current = window.setTimeout(() => handleAbnLookup(value), 300) as any;
@@ -390,6 +450,19 @@ const handleAbnLookup = async (rawAbn: string) => {
     };
 
     try {
+      // Demo mode: persist a demo copy of the application so ContractPage can prefill
+      if (isDemo) {
+        try {
+          const demoCopy = { ...payload };
+          sessionStorage.setItem(`demo_app_${referenceNumber}`, JSON.stringify(demoCopy));
+        } catch {}
+        // Skip backend, show modal + navigate to contract
+        setCreatedAppId(referenceNumber);
+        setSuccessId(referenceNumber);
+        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+        setShowApprovalModal(true);
+        return;
+      }
       // 1. Generate PDF
       const pdfBlob = await generatePDF();
       const pdfPath = `applications/${referenceNumber}.pdf`;
@@ -458,10 +531,16 @@ const handleAbnLookup = async (rawAbn: string) => {
         body: JSON.stringify({ to: ["john@asls.net.au", "admin@asls.net.au"], subject, text: `PDF: ${pdfUrl}`, html }),
       });
 
-      // Success UI: inline banner with Application ID
+      // Success UI + Conditional approval modal
+      setCreatedAppId(referenceNumber);
       setSuccessId(referenceNumber);
       try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
-      onSubmit?.();
+      const isConditionallyApproved = Number(formData.financeAmount || total || 0) <= 50000;
+      if (isConditionallyApproved) {
+        setShowApprovalModal(true);
+      } else {
+        onSubmit?.();
+      }
     } catch (err) {
       console.error("Submit failed", err);
       onSubmit?.();
@@ -473,6 +552,31 @@ const handleAbnLookup = async (rawAbn: string) => {
   return (
     <div className="min-h-screen bg-gray-50 py-10">
       <div className="max-w-5xl mx-auto bg-white shadow-lg rounded-2xl p-8">
+        {/* Conditional Approval Modal */}
+        {showApprovalModal && createdAppId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full">
+              <h2 className="text-xl font-bold text-gray-800 mb-2">Congratulations!</h2>
+              <p className="text-gray-700">
+                You have been conditionally approved. Next steps: Let's complete the contract — Subject to Final Approval by The Lender.
+              </p>
+              <div className="mt-6 flex justify-end gap-3">
+                <button onClick={() => setShowApprovalModal(false)} className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">Close</button>
+                <button
+                  onClick={() => {
+                    const params = new URLSearchParams(window.location.search);
+                    const isDemo = params.get('demo') === '1' || import.meta.env.VITE_DEMO_NO_BACKEND === '1';
+                    const suffix = isDemo ? '?demo=1' : '';
+                    navigate(`/contract/${createdAppId}${suffix}`);
+                  }}
+                  className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white"
+                >
+                  Complete Contract
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {successId && (
           <div className="mb-4 rounded-lg border border-green-300 bg-green-50 p-4 text-green-800 flex items-start justify-between">
             <div>
@@ -547,6 +651,33 @@ const handleAbnLookup = async (rawAbn: string) => {
             </span>
           </div>
 
+          {/* Monthly Repayments (estimate) */}
+          <div className="bg-green-50 p-6 rounded-xl border border-green-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-lg font-medium text-gray-800">Monthly Repayments (est.):</span>
+              <span className="text-2xl font-bold text-green-700">
+                {monthlyRepayment ? monthlyRepayment.toLocaleString('en-AU', { style: 'currency', currency: 'AUD' }) : '$0.00'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Repayment Industry</label>
+              <select
+                value={repaymentIndustry}
+                onChange={(e) => { setRepaymentIndustry(e.target.value); recalcRepayment(undefined, undefined, e.target.value); }}
+                className="border rounded-lg p-2"
+              >
+                <option value="General">General</option>
+                <option value="Beauty">Beauty</option>
+                <option value="Gym">Gym</option>
+                <option value="Hospitality">Hospitality</option>
+                <option value="Retail">Retail</option>
+                <option value="Transport">Transport</option>
+                <option value="Construction">Construction</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
+
           <div className="flex justify-end gap-4 pt-4">
             <button
               type="button"
@@ -573,3 +704,4 @@ const handleAbnLookup = async (rawAbn: string) => {
 };
 
 export default ApplicationForm;
+

@@ -10,6 +10,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import VendorDashboard from "./pages/VendorDashboard";
 import AgentDashboard from "./pages/AgentDashboard";
 import ApplicationForm from "./components/ApplicationForm";
+import ContractPage from "./pages/ContractPage";
 import NotFound from "./pages/NotFound";
 import AuthGuard from "./components/AuthGuard";
 import LoginPage from "./pages/LoginPage";
@@ -59,10 +60,18 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
           }
         />
 
+        <Route
+          path="/contract/:appId"
+          element={
+            <AuthGuard allowedRoles={["vendor", "admin", "agent"]}>
+              <ContractPage />
+            </AuthGuard>
+          }
+        />
+
         {/* Fallback */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>
 );
-

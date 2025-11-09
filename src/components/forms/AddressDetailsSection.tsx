@@ -108,20 +108,7 @@ const AddressDetailsSection: React.FC<AddressDetailsSectionProps> = ({
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
           />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Country *</label>
-          <select
-            name="country"
-            value={formData.country}
-            onChange={handleChange}
-            required
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-          >
-            {countries.map(country => (
-              <option key={country} value={country}>{country}</option>
-            ))}
-          </select>
-        </div>
+        {/* Country field removed (Australia-only) */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Premises Type *</label>
           <select
@@ -156,9 +143,8 @@ const AddressDetailsSection: React.FC<AddressDetailsSectionProps> = ({
               onChange={handleChange}
               required={formData.premisesType === 'Rented'}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-              min={new Date().toISOString().split('T')[0]}
             />
-            <p className="text-xs text-gray-500 mt-1">When does your commercial lease expire?</p>
+            <p className="text-xs text-gray-500 mt-1">Displayed in your locale; we will format to DD/MM/YYYY on export.</p>
           </div>
         )}
         <div>
