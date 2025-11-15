@@ -4,31 +4,34 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ASLS Portal</title>
-   <!-- ✅ Force cache refresh after new deployments -->
-<script>
-  (function() {
-    // If Vite environment variable is available, use it — otherwise fallback
-    const version = import.meta?.env?.VITE_APP_VERSION || Date.now().toString();
-    const cachedVersion = localStorage.getItem("asls_app_version");
+    <!-- Force cache refresh after new deployments -->
+    <script type="module">
+      (function () {
+        // If Vite environment variable is available, use it; otherwise fallback
+        const version =
+          import.meta?.env?.VITE_APP_VERSION || Date.now().toString();
+        const cachedVersion = localStorage.getItem("asls_app_version");
 
-    if (cachedVersion !== version) {
-      localStorage.setItem("asls_app_version", version);
-      console.log("🧹 Cache cleared, reloading for new deployment version:", version);
-      // Force reload (only happens once per new version)
-      window.location.reload(true);
-    }
-  })();
-</script>
-<script
-  src="https://maps.googleapis.com/maps/api/js?key=%VITE_GOOGLE_MAPS_API_KEY%&libraries=places"
-  async
-  defer
-></script>
-
-
+        if (cachedVersion !== version) {
+          localStorage.setItem("asls_app_version", version);
+          console.log(
+            "Cache cleared, reloading for new deployment version:",
+            version
+          );
+          // Force reload (only happens once per new version)
+          window.location.reload();
+        }
+      })();
+    </script>
+    <script
+      src="https://maps.googleapis.com/maps/api/js?key=%VITE_GOOGLE_MAPS_API_KEY%&libraries=places"
+      async
+      defer
+    ></script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>
+

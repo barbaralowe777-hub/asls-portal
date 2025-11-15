@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Download, Eye, Plus, Calculator, Users, CheckCircle } from 'lucide-react';
+import { Search, Download, Eye, Plus, Calculator, Users, CheckCircle, Sun } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import StatusBadge from '@/components/StatusBadge';
 import AuthGuard from '@/components/AuthGuard';
 import RepaymentCalculator from '@/components/RepaymentCalculator';
+import SolarSavingsCalculator from '@/components/SolarSavingsCalculator';
 
 type AppRow = {
   id: string;
@@ -22,7 +23,7 @@ const VendorDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState<'applications' | 'tasks' | 'reports' | 'calculator' | 'agents'>('applications');
+  const [activeTab, setActiveTab] = useState<'applications' | 'tasks' | 'reports' | 'calculator' | 'agents' | 'solar'>('applications');
   const [vendorId, setVendorId] = useState<string | null>(null);
   const [invite, setInvite] = useState({ name: '', email: '' });
   const [hasTasksOnly, setHasTasksOnly] = useState(false);
@@ -239,6 +240,12 @@ const VendorDashboard: React.FC = () => {
               <p className="text-gray-600 mt-1">Manage and track all your customer applications</p>
             </div>
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => setActiveTab('solar')}
+                className="px-6 py-3 rounded-lg font-semibold transition flex items-center bg-yellow-500 text-white hover:bg-yellow-600 shadow"
+              >
+                <Sun className="w-5 h-5 mr-2" /> Solar Savings
+              </button>
               <button
                 onClick={() => setActiveTab('calculator')}
                 className="px-6 py-3 rounded-lg font-semibold transition flex items-center bg-blue-600 text-white hover:bg-blue-700 shadow"
@@ -459,6 +466,12 @@ const VendorDashboard: React.FC = () => {
                 </button>
               </div>
               <p className="text-xs text-gray-500 mt-3">Note: Final account provisioning is handled by our team. This records your request.</p>
+            </div>
+          )}
+
+          {activeTab === 'solar' && (
+            <div className="bg-white rounded-lg shadow p-6">
+              <SolarSavingsCalculator />
             </div>
           )}
 
