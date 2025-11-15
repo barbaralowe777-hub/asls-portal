@@ -262,11 +262,7 @@ const SolarSavingsCalculator: React.FC = () => {
     doc.text("Australian Solar Lending Solutions", 14, headlineY);
     doc.setFontSize(12);
     doc.setTextColor(55, 65, 81);
-    doc.text(
-      "Solar Savings Quote • asls.net.au • 1300 000 000",
-      14,
-      headlineY + 8
-    );
+    doc.text("Solar Savings Quote • asls.net.au", 14, headlineY + 8);
     doc.setDrawColor(26, 173, 33);
     doc.line(14, headlineY + 10, 200, headlineY + 10);
     const detailsY = headlineY + 18;
