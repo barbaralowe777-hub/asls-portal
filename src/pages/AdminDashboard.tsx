@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -11,6 +11,7 @@ import {
   Bar,
 } from "recharts";
 import { Search, Download, X, Filter } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +42,14 @@ const currency = (n: number) =>
     currency: "AUD",
     maximumFractionDigits: 0,
   }).format(n);
+
+const parseAmount = (value: any) => {
+  if (value === null || value === undefined) return 0;
+  const num = Number(
+    typeof value === "string" ? value.replace(/[^0-9.-]/g, "") : value
+  );
+  return Number.isFinite(num) ? num : 0;
+};
 
 const STATUS_COLORS: Record<string, string> = {
   submitted: "bg-blue-100 text-blue-800",
@@ -127,7 +136,12 @@ const mockApplications = [
 // Component
 // ----------------------------
 const AdminAnalytics: React.FC = () => {
-  const [applications] = useState(mockApplications);
+  const [applications, setApplications] = useState(mockApplications);
+  const [vendorList, setVendorList] = useState<{ id: string; name: string }[]>(
+    []
+  );
+  const [agentProfiles, setAgentProfiles] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("date");
@@ -135,25 +149,101 @@ const AdminAnalytics: React.FC = () => {
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [selectedAgent, setSelectedAgent] = useState<any>(null);
 
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [
+          { data: appRows, error: appErr },
+          { data: vendorRows },
+          { data: agentRows },
+        ] =
+          await Promise.all([
+            supabase
+              .from("applications")
+              .select(
+                "id,entity_name,status,finance_amount,created_at,data,vendor_name"
+              ),
+            supabase.from("vendors").select("id,name"),
+            supabase
+              .from("profiles")
+              .select("id,role,company_name,vendor_id")
+              .eq("role", "agent"),
+          ]);
+
+        if (!appErr && appRows) {
+          const mapped = appRows.map((row: any) => {
+            const data = (row.data || {}) as any;
+            const customerName =
+              row.entity_name || data.entityName || data.businessName || "Unknown";
+            const agentName = [data.agentFirstName, data.agentLastName]
+              .filter(Boolean)
+              .join(" ")
+              .trim();
+            return {
+              id: row.id,
+              customerName,
+              customerEmail: data.customerEmail || "",
+              loanAmount: parseAmount(row.finance_amount || data.financeAmount),
+              status: row.status || "submitted",
+              submittedDate: row.created_at || new Date().toISOString(),
+              vendor: row.vendor_name || data.vendorName || "Unassigned",
+              agent: agentName || data.agentName || "—",
+              actionRequired: data.actionRequired,
+            };
+          });
+          if (mapped.length) setApplications(mapped);
+        }
+        if (vendorRows) setVendorList(vendorRows);
+        if (agentRows) setAgentProfiles(agentRows);
+      } catch (err) {
+        console.error("Failed to load admin data", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
   // ---------------------------
   // KPI Summary
   // ---------------------------
   const totalApplications = applications.length;
-  const totalValue = applications.reduce((sum, a) => sum + a.loanAmount, 0);
-  const underReviewValue = applications
-    .filter((a) => a.status === "under_review")
-    .reduce((sum, a) => sum + a.loanAmount, 0);
-  const declinedValue = applications
-    .filter((a) => a.status === "declined")
-    .reduce((sum, a) => sum + a.loanAmount, 0);
-  const settledValue = applications
-    .filter((a) => a.status === "funded")
-    .reduce((sum, a) => sum + a.loanAmount, 0);
+  const totalFinanceValue = applications.reduce(
+    (sum, a) => sum + a.loanAmount,
+    0
+  );
+  const totalVendors = vendorList.length;
+  const totalAgents = agentProfiles.length;
+  const underReviewCount = applications.filter(
+    (a) => a.status === "under_review" || a.status === "submitted"
+  ).length;
+  const approvedCount = applications.filter(
+    (a) => a.status === "approved"
+  ).length;
+  const settledCount = applications.filter(
+    (a) => a.status === "funded" || a.status === "settled"
+  ).length;
+  const declinedCount = applications.filter(
+    (a) => a.status === "declined"
+  ).length;
   const approvalRate = (
     (applications.filter((a) => a.status === "approved").length /
-      totalApplications) *
+      Math.max(totalApplications, 1)) *
     100
   ).toFixed(1);
+
+  const summaryCards = [
+    { label: "Total Vendors", value: totalVendors, bg: "bg-indigo-100", text: "text-indigo-700" },
+    { label: "Total Agents", value: totalAgents, bg: "bg-sky-100", text: "text-sky-700" },
+    { label: "Total Applications", value: totalApplications, bg: "bg-blue-100", text: "text-blue-800" },
+    { label: "Under Review", value: underReviewCount, bg: "bg-amber-100", text: "text-amber-800" },
+    { label: "Approved", value: approvedCount, bg: "bg-green-100", text: "text-green-800" },
+    { label: "Settled", value: settledCount, bg: "bg-emerald-100", text: "text-emerald-800" },
+    { label: "Declined", value: declinedCount, bg: "bg-red-100", text: "text-red-800" },
+    { label: "Total Finance Value", value: currency(totalFinanceValue), bg: "bg-purple-100", text: "text-purple-800" },
+    { label: "Approval Rate", value: `${approvalRate}%`, bg: "bg-slate-100", text: "text-slate-800" },
+  ];
 
   // ---------------------------
   // Derived Tables
@@ -190,7 +280,7 @@ const AdminAnalytics: React.FC = () => {
     return filtered;
   }, [applications, statusFilter, searchTerm, sortBy]);
 
-  const vendors = useMemo(() => {
+  const vendorPerformance = useMemo(() => {
     const v: Record<string, any> = {};
     applications.forEach((a) => {
       if (!v[a.vendor])
@@ -205,7 +295,7 @@ const AdminAnalytics: React.FC = () => {
     }));
   }, [applications]);
 
-  const agents = useMemo(() => {
+  const agentPerformance = useMemo(() => {
     const a: Record<string, any> = {};
     applications.forEach((app) => {
       if (!app.agent || app.agent === "—") return;
@@ -229,12 +319,23 @@ const AdminAnalytics: React.FC = () => {
     return Object.entries(map).map(([vendor, count]) => ({ vendor, count }));
   }, [applications]);
 
-  const monthlyStats = [
-    { month: "July", applications: 5, approvalRate: 60 },
-    { month: "August", applications: 6, approvalRate: 70 },
-    { month: "September", applications: 8, approvalRate: 80 },
-    { month: "October", applications: 5, approvalRate: 75 },
-  ];
+  const monthlyStats = useMemo(() => {
+    const buckets: Record<string, { apps: number; approved: number }> = {};
+    applications.forEach((app) => {
+      if (!app.submittedDate) return;
+      const date = new Date(app.submittedDate);
+      if (Number.isNaN(date.getTime())) return;
+      const key = format(date, "MMM");
+      if (!buckets[key]) buckets[key] = { apps: 0, approved: 0 };
+      buckets[key].apps += 1;
+      if (app.status === "approved") buckets[key].approved += 1;
+    });
+    return Object.entries(buckets).map(([month, data]) => ({
+      month,
+      applications: data.apps,
+      approvalRate: data.apps ? Math.round((data.approved / data.apps) * 100) : 0,
+    }));
+  }, [applications]);
 
   // ---------------------------
   // Render
@@ -257,6 +358,11 @@ const AdminAnalytics: React.FC = () => {
             <Download className="h-4 w-4 mr-2" /> Export Report
           </Button>
         </div>
+        {loading && (
+          <p className="text-sm text-gray-500 mb-4">
+            Syncing latest live data from Supabase...
+          </p>
+        )}
 
         {/* Filters */}
         <div className="bg-white rounded-lg shadow p-6 mb-6 grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -311,43 +417,17 @@ const AdminAnalytics: React.FC = () => {
         </div>
 
         {/* KPI Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-8">
-          <Card className="text-center p-4">
-            <CardTitle>Total Applications</CardTitle>
-            <p className="text-2xl font-bold text-green-700">
-              {totalApplications}
-            </p>
-          </Card>
-          <Card className="text-center p-4">
-            <CardTitle>Total Value</CardTitle>
-            <p className="text-2xl font-bold text-blue-700">
-              {currency(totalValue)}
-            </p>
-          </Card>
-          <Card className="text-center p-4">
-            <CardTitle>Under Review</CardTitle>
-            <p className="text-2xl font-bold text-amber-600">
-              {currency(underReviewValue)}
-            </p>
-          </Card>
-          <Card className="text-center p-4">
-            <CardTitle>Declined</CardTitle>
-            <p className="text-2xl font-bold text-red-600">
-              {currency(declinedValue)}
-            </p>
-          </Card>
-          <Card className="text-center p-4">
-            <CardTitle>Settled</CardTitle>
-            <p className="text-2xl font-bold text-emerald-600">
-              {currency(settledValue)}
-            </p>
-          </Card>
-          <Card className="text-center p-4">
-            <CardTitle>Approval Rate</CardTitle>
-            <p className="text-2xl font-bold text-indigo-600">
-              {approvalRate}%
-            </p>
-          </Card>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-6 mb-8">
+          {summaryCards.map((card) => (
+            <Card key={card.label} className="text-center p-4">
+              <CardTitle className="text-sm text-gray-500 uppercase tracking-wide">
+                {card.label}
+              </CardTitle>
+              <p className={`text-2xl font-bold mt-2 ${card.text}`}>
+                {card.value}
+              </p>
+            </Card>
+          ))}
         </div>
 
         {/* Charts */}
@@ -433,7 +513,7 @@ const AdminAnalytics: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {vendors.map((v, i) => (
+                  {vendorPerformance.map((v, i) => (
                     <TableRow
                       key={i}
                       onClick={() => setSelectedVendor(v)}
@@ -448,7 +528,9 @@ const AdminAnalytics: React.FC = () => {
                 </TableBody>
               </Table>
               <Button
-                onClick={() => downloadCSV(vendors, "Vendor_Report")}
+                onClick={() =>
+                  downloadCSV(vendorPerformance, "Vendor_Report")
+                }
                 className="mt-3"
                 variant="outline"
               >
@@ -472,7 +554,7 @@ const AdminAnalytics: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {agents.map((a, i) => (
+                  {agentPerformance.map((a, i) => (
                     <TableRow
                       key={i}
                       onClick={() => setSelectedAgent(a)}
@@ -487,7 +569,7 @@ const AdminAnalytics: React.FC = () => {
                 </TableBody>
               </Table>
               <Button
-                onClick={() => downloadCSV(agents, "Agent_Report")}
+                onClick={() => downloadCSV(agentPerformance, "Agent_Report")}
                 className="mt-3"
                 variant="outline"
               >
