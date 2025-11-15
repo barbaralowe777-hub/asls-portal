@@ -103,6 +103,15 @@ const futureValue = (
   return monthlyValue * Math.pow(1 + monthlyGrowth, months);
 };
 
+const loadImage = (src: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+
 const SolarSavingsCalculator: React.FC = () => {
   const [variant, setVariant] = useState<Variant>("standard");
   const [financeType, setFinanceType] = useState<FinanceType>("rental");
@@ -235,25 +244,49 @@ const SolarSavingsCalculator: React.FC = () => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const generateQuote = () => {
+  const generateQuote = async () => {
     const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text("ASLS Solar Savings Quote", 14, 20);
+    let headlineY = 24;
+    try {
+      const logo = await loadImage("/ASLS-logo.png");
+      const width = 38;
+      const ratio = logo.height / logo.width || 1;
+      const height = width * ratio;
+      doc.addImage(logo, "PNG", 14, 10, width, height);
+      headlineY = 10 + height + 4;
+    } catch {
+      // ignore logo load failures
+    }
+    doc.setFontSize(18);
+    doc.setTextColor(26, 173, 33);
+    doc.text("Australian Solar Lending Solutions", 14, headlineY);
+    doc.setFontSize(12);
+    doc.setTextColor(55, 65, 81);
+    doc.text(
+      "Solar Savings Quote • asls.net.au • 1300 000 000",
+      14,
+      headlineY + 8
+    );
+    doc.setDrawColor(26, 173, 33);
+    doc.line(14, headlineY + 10, 200, headlineY + 10);
+    const detailsY = headlineY + 18;
     doc.setFontSize(11);
     doc.text(
-      `Variant: ${variant === "standard" ? "Standard (Level Rent)" : "Reverse Rent"}`,
+      `Variant: ${
+        variant === "standard" ? "Standard (Level Rent)" : "Reverse Rent"
+      }`,
       14,
-      30
+      detailsY
     );
     doc.text(
       `Finance Type: ${
         FINANCE_TYPES.find((t) => t.value === financeType)?.label || ""
       }`,
       14,
-      36
+      detailsY + 6
     );
     autoTable(doc, {
-      startY: 44,
+      startY: detailsY + 12,
       head: [["Metric", "Value"]],
       body: [
         ["System Size", `${form.systemSize} kW`],
