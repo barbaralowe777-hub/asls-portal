@@ -46,6 +46,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
   const [loading, setLoading] = useState(false);
   const [successId, setSuccessId] = useState<string | null>(null);
   const [vendorId, setVendorId] = useState<string | null>(null);
+  const [agentId, setAgentId] = useState<string | null>(null);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [createdAppId, setCreatedAppId] = useState<string | null>(null);
   const [abnLoading, setAbnLoading] = useState(false);
@@ -176,12 +177,13 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
+        setAgentId(session.user.id);
         const { data: profile } = await supabase
           .from('profiles')
-          .select('vendor_id')
+          .select('*')
           .eq('id', session.user.id)
           .single();
-        setVendorId((profile as any)?.vendor_id || null);
+        setVendorId((profile as any)?.vendor_id || (profile as any)?.vendorId || null);
       } catch (e) {
         console.warn('Failed to load vendor_id', e);
       }
@@ -502,6 +504,7 @@ const handleAbnLookup = async (rawAbn: string) => {
             entity_name: formData.entityName || null,
             abn_number: formData.abnNumber || null,
             vendor_id: vendorId || null,
+            agent_id: agentId || null,
             vendor_name: formData.vendorName || null,
             finance_amount: formData.financeAmount || null,
             pdf_url: pdfUrl || null,

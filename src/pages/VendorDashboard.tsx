@@ -15,6 +15,8 @@ type AppRow = {
   pdf_url?: string | null;
   created_at?: string | null;
   data?: any;
+  vendor_id?: string | null;
+  agent_id?: string | null;
 };
 
 const VendorDashboard: React.FC = () => {
@@ -38,14 +40,14 @@ const VendorDashboard: React.FC = () => {
       if (!session) { setLoading(false); return; }
       const { data: profile } = await supabase
         .from('profiles')
-        .select('vendor_id')
+        .select('*')
         .eq('id', session.user.id)
         .single();
-      const vId = (profile as any)?.vendor_id || null;
+      const vId = (profile as any)?.vendor_id || (profile as any)?.vendorId || null;
       setVendorId(vId);
       let query: any = supabase
         .from('applications')
-        .select('id,status,entity_name,finance_amount,pdf_url,created_at,data')
+        .select('id,status,entity_name,finance_amount,pdf_url,created_at,data,agent_id,vendor_id')
         .order('created_at', { ascending: false });
       if (vId) query = query.eq('vendor_id', vId);
       const { data, error } = await query;
