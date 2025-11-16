@@ -184,22 +184,22 @@ const AgentDashboard: React.FC = () => {
                 Track all applications submitted under your login.
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
               <button
                 onClick={() => setActiveTab("solar")}
-                className="px-6 py-3 rounded-lg font-semibold transition flex items-center bg-yellow-500 text-white hover:bg-yellow-600 shadow"
+                className="px-6 py-3 rounded-lg font-semibold transition flex items-center bg-yellow-500 text-white hover:bg-yellow-600 shadow w-full sm:w-auto justify-center"
               >
                 <Sun className="w-5 h-5 mr-2" /> Solar Savings
               </button>
               <button
                 onClick={() => setActiveTab("calculator")}
-                className="px-6 py-3 rounded-lg font-semibold transition flex items-center bg-blue-600 text-white hover:bg-blue-700 shadow"
+                className="px-6 py-3 rounded-lg font-semibold transition flex items-center bg-blue-600 text-white hover:bg-blue-700 shadow w-full sm:w-auto justify-center"
               >
                 <Calculator className="w-5 h-5 mr-2" /> Repayment Calculator
               </button>
               <button
                 onClick={() => navigate("/application-form")}
-                className="bg-[#1dad21] text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition flex items-center"
+                className="bg-[#1dad21] text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition flex items-center w-full sm:w-auto justify-center"
               >
                 <Plus className="w-5 h-5 mr-2" /> New Application
               </button>
@@ -508,4 +508,3 @@ const AgentDashboard: React.FC = () => {
 };
 
 export default AgentDashboard;
-
