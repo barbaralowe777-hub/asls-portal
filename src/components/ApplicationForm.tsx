@@ -538,7 +538,7 @@ const handleAbnLookup = async (rawAbn: string) => {
       setCreatedAppId(referenceNumber);
       setSuccessId(referenceNumber);
       try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
-      const isConditionallyApproved = Number(formData.financeAmount || total || 0) <= 50000;
+      const isConditionallyApproved = Number(formData.financeAmount || total || 0) <= 150000;
       if (isConditionallyApproved) {
         setShowApprovalModal(true);
       } else {
@@ -559,12 +559,34 @@ const handleAbnLookup = async (rawAbn: string) => {
         {showApprovalModal && createdAppId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full">
-              <h2 className="text-xl font-bold text-gray-800 mb-2">Congratulations!</h2>
-              <p className="text-gray-700">
-                You have been conditionally approved. Next steps: Let's complete the contract — Subject to Final Approval by The Lender.
+              <h2 className="text-xl font-bold text-gray-800 mb-3">Congratulations!</h2>
+              <p className="text-gray-700 mb-3">
+                You have been conditionally approved subject to the terms below. This is not a formal or unconditional offer of finance until the lender confirms all details.
               </p>
-              <div className="mt-6 flex justify-end gap-3">
-                <button onClick={() => setShowApprovalModal(false)} className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">Close</button>
+              <div className="space-y-2 text-sm text-gray-700">
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 text-[#1dad21] border-gray-300 rounded"
+                  />
+                  <span>I acknowledge this is a conditional approval only.</span>
+                </label>
+                <ul className="list-disc pl-5 space-y-2">
+                  <li>Final approval requires a satisfactory credit score and history.</li>
+                  <li>The lender must verify all information and documents provided.</li>
+                  <li>My personal and business circumstances must not worsen before settlement.</li>
+                  <li>The lender must be satisfied with identification, compliance and AML/CTF requirements.</li>
+                  <li>The asset and loan structure must meet the lender's credit policy.</li>
+                  <li>The lender will confirm the final loan amount, term, interest rate and repayment details.</li>
+                </ul>
+              </div>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  onClick={() => setShowApprovalModal(false)}
+                  className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  Close
+                </button>
                 <button
                   onClick={() => {
                     const params = new URLSearchParams(window.location.search);
@@ -572,9 +594,9 @@ const handleAbnLookup = async (rawAbn: string) => {
                     const suffix = isDemo ? '?demo=1' : '';
                     navigate(`/contract/${createdAppId}${suffix}`);
                   }}
-                  className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white"
+                  className="bg-[#1dad21] text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition"
                 >
-                  Complete Contract
+                  Continue to Lenders Agreement
                 </button>
               </div>
             </div>

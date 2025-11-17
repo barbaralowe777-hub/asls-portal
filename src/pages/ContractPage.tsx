@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom";
 import SignatureCanvas from "react-signature-canvas";
 import { supabase } from "@/lib/supabase";
-import { loadTemplate, drawText, drawPng, saveToBlob } from "@/lib/pdfFill";
+import { loadTemplate, drawText, drawPng, saveToBlob, clearArea } from "@/lib/pdfFill";
 import { contractFieldCoords as F } from "@/config/contractFields";
 import type { PDFDocument } from "pdf-lib";
 
@@ -135,12 +135,34 @@ const ContractPage: React.FC = () => {
     }
     if (!doc) throw lastErr || new Error('Contract template not found in /public');
 
+    const writeField = async (
+      field: typeof F.businessName,
+      text: string
+    ) => {
+      if (field.clearWidth && field.clearHeight) {
+        clearArea(doc, {
+          page: field.page,
+          x: field.x + (field.clearOffsetX ?? 0),
+          y: field.y + (field.clearOffsetY ?? 0),
+          width: field.clearWidth,
+          height: field.clearHeight,
+        });
+      }
+      await drawText(doc, {
+        page: field.page,
+        x: field.x,
+        y: field.y,
+        text,
+        fontSize: field.fontSize,
+      });
+    };
+
     // Draw fields
-    await drawText(doc, { page: F.businessName.page, x: F.businessName.x, y: F.businessName.y, text: data.businessName, fontSize: F.businessName.fontSize });
-    await drawText(doc, { page: F.abnNumber.page, x: F.abnNumber.x, y: F.abnNumber.y, text: data.abnNumber, fontSize: F.abnNumber.fontSize });
-    await drawText(doc, { page: F.businessAddress.page, x: F.businessAddress.x, y: F.businessAddress.y, text: data.businessAddress, fontSize: F.businessAddress.fontSize });
-    await drawText(doc, { page: F.financeAmount.page, x: F.financeAmount.x, y: F.financeAmount.y, text: data.financeAmount, fontSize: F.financeAmount.fontSize });
-    await drawText(doc, { page: F.term.page, x: F.term.x, y: F.term.y, text: data.term, fontSize: F.term.fontSize });
+    await writeField(F.businessName, data.businessName);
+    await writeField(F.abnNumber, data.abnNumber);
+    await writeField(F.businessAddress, data.businessAddress);
+    await writeField(F.financeAmount, data.financeAmount);
+    await writeField(F.term, data.term);
 
     // In demo, annotate summary for clarity
     if (isDemo) {

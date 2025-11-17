@@ -26,6 +26,15 @@ import autoTable from "jspdf-autotable";
 
 type Variant = "standard" | "reverse";
 type FinanceType = "rental" | "lease" | "chattel";
+type Industry =
+  | "General"
+  | "Beauty"
+  | "Gym"
+  | "Hospitality"
+  | "Retail"
+  | "Transport"
+  | "Construction"
+  | "Other";
 
 type FormState = {
   electricityPrice: number;
@@ -38,6 +47,7 @@ type FormState = {
   dailyUsage: number;
   loanTerm: number;
   residualPercent: number;
+  industry: Industry;
 };
 
 const IRRADIANCE = {
@@ -57,6 +67,19 @@ const FINANCE_TYPES: { value: FinanceType; label: string }[] = [
   { value: "chattel", label: "Chattel Mortgage" },
 ];
 
+const INDUSTRY_OPTIONS: Industry[] = [
+  "General",
+  "Beauty",
+  "Gym",
+  "Hospitality",
+  "Retail",
+  "Transport",
+  "Construction",
+  "Other",
+];
+
+const UPLIFT_INDUSTRIES: Industry[] = ["Beauty", "Gym", "Hospitality"];
+
 const DEFAULT_FORM: FormState = {
   electricityPrice: 0.22,
   systemSize: 30,
@@ -64,10 +87,11 @@ const DEFAULT_FORM: FormState = {
   state: "NSW",
   feedInTariff: 0.08,
   exportPercentage: 30,
-  yearlyIncrease: 4,
+  yearlyIncrease: 5,
   dailyUsage: 120,
   loanTerm: 60,
   residualPercent: 0,
+  industry: "General",
 };
 
 const getBaseRate = (amount: number): number => {
@@ -153,7 +177,10 @@ const SolarSavingsCalculator: React.FC = () => {
       : (form.systemCost * (form.residualPercent || 0)) / 100;
 
   const monthlyRepayment = useMemo(() => {
-    const annualRate = getBaseRate(financeTotal);
+    let annualRate = getBaseRate(financeTotal);
+    if (UPLIFT_INDUSTRIES.includes(form.industry)) {
+      annualRate += 1;
+    }
     const monthlyRate = annualRate / 100 / 12;
     const principal = -financeTotal;
     const payment = pmt(
@@ -167,6 +194,7 @@ const SolarSavingsCalculator: React.FC = () => {
     financeTotal,
     residualValue,
     form.loanTerm,
+    form.industry,
   ]);
 
   const paymentSchedule = useMemo(() => {
@@ -184,10 +212,16 @@ const SolarSavingsCalculator: React.FC = () => {
     return schedule;
   }, [form.loanTerm, monthlyRepayment, variant]);
 
-  const monthlySavingsNow = useMemo(() => {
-    const currentPayment = paymentSchedule[0] || 0;
-    return oldBillMonthly - (newBillMonthly + currentPayment);
-  }, [newBillMonthly, oldBillMonthly, paymentSchedule]);
+  const monthlyGrossSavings = useMemo(() => {
+    const annualOld = oldBillMonthly * 12;
+    const annualNew = newBillMonthly * 12;
+    return (annualOld - annualNew) / 12;
+  }, [newBillMonthly, oldBillMonthly]);
+
+  const monthlyNetSavings = useMemo(
+    () => monthlyGrossSavings - monthlyRepayment,
+    [monthlyGrossSavings, monthlyRepayment]
+  );
 
   const paybackYears = useMemo(() => {
     let cumulative = 0;
@@ -281,8 +315,9 @@ const SolarSavingsCalculator: React.FC = () => {
       14,
       detailsY + 6
     );
+    doc.text(`Industry: ${form.industry}`, 14, detailsY + 12);
     autoTable(doc, {
-      startY: detailsY + 12,
+      startY: detailsY + 18,
       head: [["Metric", "Value"]],
       body: [
         ["System Size", `${form.systemSize} kW`],
@@ -292,17 +327,10 @@ const SolarSavingsCalculator: React.FC = () => {
         ["Feed-In Tariff", `$${form.feedInTariff.toFixed(2)}/kWh`],
         ["Loan Term", `${form.loanTerm} months`],
         ["Monthly Repayment", currency(monthlyRepayment)],
-        [
-          "Year 1 Average Payment",
-          currency(
-            Math.round(
-              paymentSchedule.slice(0, 12).reduce((sum, v) => sum + v, 0) / 12
-            )
-          ),
-        ],
+        ["Monthly Gross Savings", currency(monthlyGrossSavings)],
         ["Monthly Bill (Before)", currency(oldBillMonthly)],
         ["Monthly Bill (After)", currency(newBillMonthly)],
-        ["Monthly Savings (Today)", currency(monthlySavingsNow)],
+        ["Monthly Nett Savings", currency(monthlyNetSavings)],
         [
           "10 Year Net Benefit",
           currency(Math.round(tenYearBenefit)),
@@ -319,25 +347,17 @@ const SolarSavingsCalculator: React.FC = () => {
       sublabel:
         variant === "reverse"
           ? "Base rent before reverse-rent discount"
-          : "Matches Equipment Finance calculator formula",
+          : "According to repayment calculator",
     },
     {
-      label: "Year 1 Avg Payment",
-      value: currency(
-        Math.round(
-          (paymentSchedule.slice(0, 12).reduce((sum, v) => sum + v, 0) || 0) /
-            12
-        )
-      ),
-      sublabel:
-        variant === "reverse"
-          ? "Discounted rent during intro period"
-          : "Same as monthly repayment",
+      label: "Monthly Gross Savings",
+      value: currency(monthlyGrossSavings),
+      sublabel: "Old utility bill - new utility bill",
     },
     {
-      label: "Monthly Savings Now",
-      value: currency(monthlySavingsNow),
-      sublabel: "Old bill - (new bill + rent)",
+      label: "Monthly Nett Savings",
+      value: currency(monthlyNetSavings),
+      sublabel: "Monthly gross savings - monthly loan repayment",
     },
     {
       label: "10 Year Net Benefit",
@@ -419,6 +439,25 @@ const SolarSavingsCalculator: React.FC = () => {
                   {[12, 24, 36, 48, 60, 72, 84].map((term) => (
                     <option key={term} value={term}>
                       {term}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label>Industry</Label>
+                <select
+                  className="mt-1 w-full border rounded-md px-3 py-2"
+                  value={form.industry}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      industry: event.target.value as Industry,
+                    }))
+                  }
+                >
+                  {INDUSTRY_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
                     </option>
                   ))}
                 </select>
@@ -512,6 +551,9 @@ const SolarSavingsCalculator: React.FC = () => {
                     )
                   }
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  5% average as per Australian Energy Regulator 2025.
+                </p>
               </div>
               <div>
                 <Label>Exported Energy (%)</Label>

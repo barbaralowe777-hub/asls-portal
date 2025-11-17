@@ -243,16 +243,16 @@ const VendorDashboard: React.FC = () => {
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
               <button
-                onClick={() => setActiveTab('solar')}
-                className="px-6 py-3 rounded-lg font-semibold transition flex items-center bg-yellow-500 text-white hover:bg-yellow-600 shadow w-full sm:w-auto justify-center"
-              >
-                <Sun className="w-5 h-5 mr-2" /> Solar Savings
-              </button>
-              <button
                 onClick={() => setActiveTab('calculator')}
                 className="px-6 py-3 rounded-lg font-semibold transition flex items-center bg-blue-600 text-white hover:bg-blue-700 shadow w-full sm:w-auto justify-center"
               >
                 <Calculator className="w-5 h-5 mr-2" /> Repayment Calculator
+              </button>
+              <button
+                onClick={() => setActiveTab('solar')}
+                className="px-6 py-3 rounded-lg font-semibold transition flex items-center bg-yellow-500 text-white hover:bg-yellow-600 shadow w-full sm:w-auto justify-center"
+              >
+                <Sun className="w-5 h-5 mr-2" /> Solar Savings
               </button>
               <button
                 onClick={() => navigate('/application-form')}

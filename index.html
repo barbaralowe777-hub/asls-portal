@@ -7,18 +7,20 @@
     <!-- Force cache refresh after new deployments -->
     <script type="module">
       (function () {
-        // If Vite environment variable is available, use it; otherwise fallback
-        const version =
-          import.meta?.env?.VITE_APP_VERSION || Date.now().toString();
+        const version = import.meta?.env?.VITE_APP_VERSION;
+        if (!version) {
+          console.debug(
+            "VITE_APP_VERSION not provided; skipping cache bust reload logic."
+          );
+          return;
+        }
         const cachedVersion = localStorage.getItem("asls_app_version");
-
         if (cachedVersion !== version) {
           localStorage.setItem("asls_app_version", version);
           console.log(
             "Cache cleared, reloading for new deployment version:",
             version
           );
-          // Force reload (only happens once per new version)
           window.location.reload();
         }
       })();
@@ -34,4 +36,3 @@
     <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>
-

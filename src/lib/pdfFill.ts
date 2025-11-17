@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 export async function loadTemplate(url: string) {
   const res = await fetch(url);
@@ -35,8 +35,21 @@ export async function drawPng(
   });
 }
 
+export function clearArea(
+  doc: PDFDocument,
+  opts: { page: number; x: number; y: number; width: number; height: number }
+) {
+  const page = doc.getPage(opts.page);
+  page.drawRectangle({
+    x: opts.x,
+    y: opts.y,
+    width: opts.width,
+    height: opts.height,
+    color: rgb(1, 1, 1),
+  });
+}
+
 export async function saveToBlob(doc: PDFDocument) {
   const bytes = await doc.save();
   return new Blob([bytes], { type: "application/pdf" });
 }
-
