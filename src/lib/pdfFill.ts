@@ -49,6 +49,33 @@ export function clearArea(
   });
 }
 
+export function drawRect(
+  doc: PDFDocument,
+  opts: {
+    page: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    color?: { r: number; g: number; b: number };
+    borderColor?: { r: number; g: number; b: number };
+    borderWidth?: number;
+    opacity?: number;
+  }
+) {
+  const page = doc.getPage(opts.page);
+  page.drawRectangle({
+    x: opts.x,
+    y: opts.y,
+    width: opts.width,
+    height: opts.height,
+    color: opts.color,
+    borderColor: opts.borderColor,
+    borderWidth: opts.borderWidth,
+    opacity: opts.opacity,
+  });
+}
+
 export async function saveToBlob(doc: PDFDocument) {
   const bytes = await doc.save();
   return new Blob([bytes], { type: "application/pdf" });
