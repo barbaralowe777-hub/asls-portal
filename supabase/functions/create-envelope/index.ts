@@ -20,16 +20,116 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get(
   "SUPABASE_SERVICE_ROLE_KEY",
 )!;
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false }});
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
 
 const docuSignBaseUrl = "https://demo.docusign.net/restapi/v2.1";
 
-const buildCorsHeaders = (origin: string) => ({
-  "Access-Control-Allow-Origin": origin || PORTAL_BASE_URL,
+const buildCorsHeaders = () => ({
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, apikey, X-Client-Info",
 });
+
+const RSA_OID = new Uint8Array([
+  0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+]);
+const NULL_VALUE = new Uint8Array([0x05, 0x00]);
+
+const concatBytes = (...arrays: Uint8Array[]): Uint8Array => {
+  const total = arrays.reduce((sum, arr) => sum + arr.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
+  return result;
+};
+
+const encodeDerLength = (length: number): Uint8Array => {
+  if (length < 0x80) return new Uint8Array([length]);
+  const bytes: number[] = [];
+  let temp = length;
+  while (temp > 0) {
+    bytes.unshift(temp & 0xff);
+    temp >>= 8;
+  }
+  return new Uint8Array([0x80 | bytes.length, ...bytes]);
+};
+
+const base64StringToUint8 = (b64: string): Uint8Array => {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+};
+
+const parsePem = (pem: string): Uint8Array => {
+  const cleaned = pem
+    .replace(/-----BEGIN [^-]+-----/g, "")
+    .replace(/-----END [^-]+-----/g, "")
+    .replace(/\s+/g, "");
+  return base64StringToUint8(cleaned);
+};
+
+const wrapPkcs1ToPkcs8 = (pkcs1Bytes: Uint8Array): Uint8Array => {
+  const version = new Uint8Array([0x02, 0x01, 0x00]);
+  const algorithm = concatBytes(
+    new Uint8Array([0x30]),
+    encodeDerLength(RSA_OID.length + NULL_VALUE.length),
+    RSA_OID,
+    NULL_VALUE
+  );
+  const privateKeyOctet = concatBytes(
+    new Uint8Array([0x04]),
+    encodeDerLength(pkcs1Bytes.length),
+    pkcs1Bytes
+  );
+  const body = concatBytes(version, algorithm, privateKeyOctet);
+  return concatBytes(
+    new Uint8Array([0x30]),
+    encodeDerLength(body.length),
+    body
+  );
+};
+
+const pemToPkcs8 = (pem: string): Uint8Array => {
+  if (pem.includes("BEGIN RSA PRIVATE KEY")) {
+    const pkcs1 = parsePem(pem);
+    return wrapPkcs1ToPkcs8(pkcs1);
+  }
+  return parsePem(pem);
+};
+
+let cachedPrivateKey: CryptoKey | null = null;
+
+const getDocuSignPrivateKey = async (): Promise<CryptoKey> => {
+  if (cachedPrivateKey) return cachedPrivateKey;
+  if (!DOCUSIGN_PRIVATE_KEY) {
+    throw new Error("DOCUSIGN_PRIVATE_KEY env var missing");
+  }
+  const pkcs8 = pemToPkcs8(DOCUSIGN_PRIVATE_KEY);
+  const keyBuffer = pkcs8.buffer.slice(
+    pkcs8.byteOffset,
+    pkcs8.byteOffset + pkcs8.byteLength
+  );
+  cachedPrivateKey = await crypto.subtle.importKey(
+    "pkcs8",
+    keyBuffer,
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      hash: "SHA-256",
+    },
+    false,
+    ["sign"]
+  );
+  return cachedPrivateKey;
+};
 
 async function createJwt(): Promise<string> {
   const header: Header = { alg: "RS256", typ: "JWT" };
@@ -41,7 +141,8 @@ async function createJwt(): Promise<string> {
     exp: getNumericDate(3600),
     scope: "signature impersonation",
   };
-  return await create(header, payload, DOCUSIGN_PRIVATE_KEY);
+  const key = await getDocuSignPrivateKey();
+  return await create(header, payload, key);
 }
 
 async function fetchAccessToken(): Promise<string> {
