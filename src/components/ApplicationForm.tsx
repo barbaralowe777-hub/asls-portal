@@ -7,6 +7,14 @@ import AddressDetailsSection from "./forms/AddressDetailsSection";
 import SupplierSection from "./forms/SupplierSection";
 import BrokerageSection from "./forms/BrokerageSection";
 import EquipmentDetailsSection from "./forms/EquipmentDetailsSection";
+import DirectorsSection, {
+  DirectorInfo,
+  createBlankDirector,
+} from "./forms/DirectorsSection";
+import GuarantorsSection, {
+  GuarantorInfo,
+  createBlankGuarantor,
+} from "./forms/GuarantorsSection";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as PDFLib from "pdf-lib";
@@ -44,6 +52,8 @@ const digitsOnly = (v: string) => v.replace(/\D/g, "");
 
 const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) => {
   const [loading, setLoading] = useState(false);
+  const [docuSignLoading, setDocuSignLoading] = useState(false);
+  const [docuSignError, setDocuSignError] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<string | null>(null);
   const [vendorId, setVendorId] = useState<string | null>(null);
   const [agentId, setAgentId] = useState<string | null>(null);
@@ -61,11 +71,11 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
     supportingDocs: [] as Array<{ file: File; type?: string; name?: string }>,
   });
 
-  const [equipmentItems, setEquipmentItems] = useState([
-    {
-      category: "",
-      asset: "",
-      quantity: "",
+const [equipmentItems, setEquipmentItems] = useState([
+  {
+    category: "",
+    asset: "",
+    quantity: "",
       unitPrice: "",
       manufacturer: "",
       serialNumber: "As per Dealer Invoice/Annexure",
@@ -120,6 +130,15 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
     () => new URLSearchParams(window.location.search).get('demo') === '1' || import.meta.env.VITE_DEMO_NO_BACKEND === '1',
     []
   );
+
+  const [directors, setDirectors] = useState<DirectorInfo[]>([
+    createBlankDirector(),
+  ]);
+  const [directorsAreGuarantors, setDirectorsAreGuarantors] = useState(true);
+  const [guarantors, setGuarantors] = useState<GuarantorInfo[]>([
+    createBlankGuarantor(),
+  ]);
+  const directorAddressRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   const DOC_FEE = 385; // kept for info; not used in calc below
   const UPLIFT_INDUSTRIES = ["Beauty", "Gym", "Hospitality"]; // +1% uplift
@@ -189,6 +208,32 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
       }
     })();
   }, []);
+
+  useEffect(() => {
+    const bindAutocomplete = () => {
+      directorAddressRefs.current.forEach((input, idx) => {
+        if (!input || (input as any)._acBound) return;
+        const ac = new google.maps.places.Autocomplete(input as any, {
+          types: ["address"],
+          componentRestrictions: { country: "au" },
+        });
+        (input as any)._acBound = true;
+        ac.addListener("place_changed", () => {
+          const place = ac.getPlace() as google.maps.places.PlaceResult;
+          const formatted =
+            place?.formatted_address || place?.name || input.value || "";
+          setDirectors((prev) =>
+            prev.map((d, i) => (i === idx ? { ...d, address: formatted } : d))
+          );
+        });
+      });
+    };
+    if (window.google?.maps?.places) {
+      bindAutocomplete();
+    } else {
+      loadGoogleMapsScript(bindAutocomplete);
+    }
+  }, [directors.length]);
 
   // Attach Google Places Autocomplete to installation address
   useEffect(() => {
@@ -434,6 +479,9 @@ const handleAbnLookup = async (rawAbn: string) => {
     return new Blob([finalBytes], { type: "application/pdf" });
   };
 
+  const stripDirectorFiles = (list: DirectorInfo[]) =>
+    list.map(({ licenceFrontFile, licenceBackFile, medicareFrontFile, ...rest }) => rest);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -444,11 +492,14 @@ const handleAbnLookup = async (rawAbn: string) => {
       0
     );
 
-    const payload = {
+    let payload: any = {
       ...formData,
       equipmentItems,
       total,
       referenceNumber,
+      directors: stripDirectorFiles(directors),
+      directorsAreGuarantors,
+      guarantors: directorsAreGuarantors ? [] : guarantors,
     };
 
     try {
@@ -478,7 +529,10 @@ const handleAbnLookup = async (rawAbn: string) => {
       // 2. Upload supporting files
       const uploadOne = async (key: string, file: File | null) => {
         if (!file) return null;
-        const path = `applications/${referenceNumber}/${key}_${Date.now()}_${file.name}`;
+        const safeName = (file.name || "upload")
+          .replace(/[^a-z0-9.\-_]/gi, "_")
+          .slice(0, 80);
+        const path = `applications/${referenceNumber}/${key}_${Date.now()}_${safeName}`;
         const { error } = await supabase.storage.from("uploads").upload(path, file, { upsert: true });
         if (error) throw error;
         return supabase.storage.from("uploads").getPublicUrl(path).data.publicUrl;
@@ -495,9 +549,47 @@ const handleAbnLookup = async (rawAbn: string) => {
         if (url) links.push(`${d.type || "Doc"}: ${url}`);
       }
 
+      const directorsWithUploads = await Promise.all(
+        directors.map(async (director, idx) => {
+          const { licenceFrontFile, licenceBackFile, medicareFrontFile, ...rest } = director;
+          const uploads: Partial<DirectorInfo> = {};
+          const prefix = `director_${idx + 1}`;
+          const frontUrl = await uploadOne(
+            `${prefix}_licence_front`,
+            licenceFrontFile || null
+          );
+          if (frontUrl) {
+            uploads.licenceFrontUrl = frontUrl;
+            links.push(`Director ${idx + 1} Licence Front: ${frontUrl}`);
+          }
+          const backUrl = await uploadOne(
+            `${prefix}_licence_back`,
+            licenceBackFile || null
+          );
+          if (backUrl) {
+            uploads.licenceBackUrl = backUrl;
+            links.push(`Director ${idx + 1} Licence Back: ${backUrl}`);
+          }
+          const medFrontUrl = await uploadOne(
+            `${prefix}_medicare_front`,
+            medicareFrontFile || null
+          );
+          if (medFrontUrl) {
+            uploads.medicareFrontUrl = medFrontUrl;
+            links.push(`Director ${idx + 1} Medicare: ${medFrontUrl}`);
+          }
+          return { ...rest, ...uploads };
+        })
+      );
+
+      payload = {
+        ...payload,
+        directors: directorsWithUploads,
+      };
+
       // 3. Persist minimal record for dashboard (best-effort) with vendor_id from profile
       try {
-        await supabase.from('applications').insert([
+        await supabase.from('application_forms').insert([
           {
             id: referenceNumber,
             status: 'submitted',
@@ -552,6 +644,49 @@ const handleAbnLookup = async (rawAbn: string) => {
     }
   };
 
+  const handleLaunchDocuSign = async () => {
+    if (!createdAppId) return;
+    const params = new URLSearchParams(window.location.search);
+    const demoMode =
+      params.get("demo") === "1" || import.meta.env.VITE_DEMO_NO_BACKEND === "1";
+    if (demoMode) {
+      const suffix = demoMode ? "?demo=1" : "";
+      navigate(`/contract/${createdAppId}${suffix}`);
+      return;
+    }
+    setDocuSignError(null);
+    setDocuSignLoading(true);
+    try {
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!baseUrl || !anonKey) {
+        throw new Error("Supabase configuration missing.");
+      }
+      const res = await fetch(`${baseUrl}/functions/v1/create-envelope`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${anonKey}`,
+          apikey: anonKey,
+        },
+        body: JSON.stringify({ applicationId: createdAppId }),
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to launch DocuSign (${res.status})`);
+      }
+      const payload = await res.json();
+      if (!payload?.url) {
+        throw new Error("DocuSign response missing recipient URL.");
+      }
+      window.location.href = payload.url;
+    } catch (err: any) {
+      console.error("DocuSign launch failed", err);
+      setDocuSignError(err?.message || "Unable to open DocuSign. Try again.");
+    } finally {
+      setDocuSignLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 py-10">
       <div className="max-w-5xl mx-auto bg-white shadow-lg rounded-2xl p-8">
@@ -579,6 +714,9 @@ const handleAbnLookup = async (rawAbn: string) => {
                   <li>The asset and loan structure must meet the lender's credit policy.</li>
                   <li>The lender will confirm the final loan amount, term, interest rate and repayment details.</li>
                 </ul>
+                {docuSignError && (
+                  <p className="text-sm text-red-600">{docuSignError}</p>
+                )}
               </div>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
                 <button
@@ -588,15 +726,11 @@ const handleAbnLookup = async (rawAbn: string) => {
                   Close
                 </button>
                 <button
-                  onClick={() => {
-                    const params = new URLSearchParams(window.location.search);
-                    const isDemo = params.get('demo') === '1' || import.meta.env.VITE_DEMO_NO_BACKEND === '1';
-                    const suffix = isDemo ? '?demo=1' : '';
-                    navigate(`/contract/${createdAppId}${suffix}`);
-                  }}
-                  className="bg-[#1dad21] text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition"
+                  onClick={handleLaunchDocuSign}
+                  disabled={docuSignLoading}
+                  className="bg-[#1dad21] text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition disabled:opacity-60"
                 >
-                  Continue to Lenders Agreement
+                  {docuSignLoading ? "Preparing DocuSign..." : "Continue to Lenders Agreement"}
                 </button>
               </div>
             </div>
@@ -641,6 +775,21 @@ const handleAbnLookup = async (rawAbn: string) => {
             handleChange={handleChange}
             abnLoading={abnLoading}
           />
+          <DirectorsSection
+            directors={directors}
+            setDirectors={setDirectors}
+            directorsAreGuarantors={directorsAreGuarantors}
+            setDirectorsAreGuarantors={setDirectorsAreGuarantors}
+            registerAddressRef={(idx, el) => {
+              directorAddressRefs.current[idx] = el;
+            }}
+          />
+          {!directorsAreGuarantors && (
+            <GuarantorsSection
+              guarantors={guarantors}
+              setGuarantors={setGuarantors}
+            />
+          )}
           <AddressDetailsSection
             formData={formData}
             handleChange={handleChange}
