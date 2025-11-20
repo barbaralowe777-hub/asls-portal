@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img">
+  <rect width="256" height="256" rx="48" fill="#0b0b0b"/>
+  <circle cx="128" cy="128" r="84" fill="#D3AF37"/>
+  <path d="M86 110l22 36l20-30l20 30l22-36" fill="none" stroke="#0b0b0b" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="128" y="220" fill="#D3AF37" font-size="16" font-family="system-ui, Arial" text-anchor="middle">World Machine Money</text>
+</svg>

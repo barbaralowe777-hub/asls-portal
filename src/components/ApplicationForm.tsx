@@ -123,6 +123,13 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
     supportingDocs: [] as Array<{ file: File; type?: string; name?: string }>,
   });
 
+  const isDemoFlag = useMemo(
+    () =>
+      new URLSearchParams(window.location.search).get("demo") === "1" ||
+      import.meta.env.VITE_DEMO_NO_BACKEND === "1",
+    []
+  );
+
   const clearVendorPrefillFields = useCallback(() => {
     setVendorPrefillLocked(false);
     setVendorPrefillError(null);
@@ -147,7 +154,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
         clearVendorPrefillFields();
         return;
       }
-      if (isDemo) {
+      if (isDemoFlag) {
         setVendorPrefillLocked(false);
         setVendorPrefillError("Vendor lookup is disabled in demo mode.");
         return;
@@ -197,7 +204,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
         setVendorPrefillLoading(false);
       }
     },
-    [clearVendorPrefillFields, isDemo]
+    [clearVendorPrefillFields, isDemoFlag]
   );
 
   const scheduleVendorLookup = useCallback(
@@ -272,10 +279,6 @@ const [equipmentItems, setEquipmentItems] = useState([
   // Repayments estimate (demo and live)
   const [repaymentIndustry, setRepaymentIndustry] = useState<string>("General");
   const [monthlyRepayment, setMonthlyRepayment] = useState<number | null>(null);
-  const isDemo = useMemo(
-    () => new URLSearchParams(window.location.search).get('demo') === '1' || import.meta.env.VITE_DEMO_NO_BACKEND === '1',
-    []
-  );
 
   const [directors, setDirectors] = useState<DirectorInfo[]>([
     createBlankDirector(),
@@ -339,7 +342,7 @@ const [equipmentItems, setEquipmentItems] = useState([
   // Load vendor_id from the logged-in profile
   useEffect(() => {
     (async () => {
-      if (isDemo) return;
+    if (isDemoFlag) return;
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
@@ -367,11 +370,11 @@ const [equipmentItems, setEquipmentItems] = useState([
   }, []);
 
   useEffect(() => {
-    if (!vendorId || isDemo) return;
+    if (!vendorId || isDemoFlag) return;
     const normalized = normalizeVendorCode(vendorId);
     setFormData((prev) => ({ ...prev, vendorId: normalized }));
     fetchVendorDetails(normalized);
-  }, [vendorId, isDemo, fetchVendorDetails]);
+  }, [vendorId, isDemoFlag, fetchVendorDetails]);
 
   useEffect(
     () => () => {
