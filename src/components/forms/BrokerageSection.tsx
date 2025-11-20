@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, Camera, ChevronDown } from 'lucide-react';
+import { Upload } from 'lucide-react';
 
 interface BrokerageSectionProps {
   formData: any;
@@ -28,6 +28,11 @@ const BrokerageSection: React.FC<BrokerageSectionProps> = ({
   const handleSupportingDocUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
     if (file && selectedDocType) {
+      if (Array.isArray(files.supportingDocs) && files.supportingDocs.length >= 4) {
+        alert("You can upload up to 4 supporting documents.");
+        e.target.value = "";
+        return;
+      }
       handleFileChange('supportingDocs', file, selectedDocType);
     } else if (file) {
       alert('Please select a document type first');
@@ -98,66 +103,9 @@ const BrokerageSection: React.FC<BrokerageSectionProps> = ({
       </div>
 
       <div className="mt-8">
-        <h3 className="text-lg font-medium mb-4">Document Upload</h3>
+        <h3 className="text-lg font-medium mb-4">Supporting Documents</h3>
         <div className="grid md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Drivers Licence Front</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-green-500 transition-colors">
-              <input
-                type="file"
-                id="driversLicenseFront"
-                accept="image/*"
-                onChange={(e) => handleFileChange('driversLicenseFront', e.target.files?.[0] || null)}
-                className="hidden"
-              />
-              <label htmlFor="driversLicenseFront" className="cursor-pointer">
-                <Camera className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                <p className="text-sm text-gray-600">
-                  {files.driversLicenseFront ? files.driversLicenseFront.name : 'Take Photo or Upload'}
-                </p>
-              </label>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Drivers Licence Back</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-green-500 transition-colors">
-              <input
-                type="file"
-                id="driversLicenseBack"
-                accept="image/*"
-                onChange={(e) => handleFileChange('driversLicenseBack', e.target.files?.[0] || null)}
-                className="hidden"
-              />
-              <label htmlFor="driversLicenseBack" className="cursor-pointer">
-                <Camera className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                <p className="text-sm text-gray-600">
-                  {files.driversLicenseBack ? files.driversLicenseBack.name : 'Take Photo or Upload'}
-                </p>
-              </label>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Medicare Card</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-green-500 transition-colors">
-              <input
-                type="file"
-                id="medicareCard"
-                accept="image/*"
-                onChange={(e) => handleFileChange('medicareCard', e.target.files?.[0] || null)}
-                className="hidden"
-              />
-              <label htmlFor="medicareCard" className="cursor-pointer">
-                <Camera className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                <p className="text-sm text-gray-600">
-                  {files.medicareCard ? files.medicareCard.name : 'Take Photo or Upload'}
-                </p>
-              </label>
-            </div>
-          </div>
-
-          <div>
+          <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-2">Supporting Documents</label>
             <div className="space-y-3">
               <select
@@ -184,7 +132,7 @@ const BrokerageSection: React.FC<BrokerageSectionProps> = ({
                   <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                   <p className="text-sm text-gray-600">Upload Documents</p>
                   <p className="text-xs text-gray-500 mt-1">
-                    Select type above, then upload
+                    Select type above, then upload (max 4 files)
                   </p>
                 </label>
               </div>

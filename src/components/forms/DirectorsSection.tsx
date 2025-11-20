@@ -1,4 +1,5 @@
 import React from "react";
+import { Upload } from "lucide-react";
 
 export type DirectorInfo = {
   title?: string;
@@ -46,6 +47,39 @@ const blankDirector = (): DirectorInfo => ({
   licenceBackFile: null,
   medicareFrontFile: null,
 });
+
+const UploadTile = ({
+  id,
+  accept,
+  label,
+  file,
+  onChange,
+}: {
+  id: string;
+  accept?: string;
+  label: string;
+  file: File | null | undefined;
+  onChange: (file: File | null) => void;
+}) => (
+  <div>
+    <label className="text-sm font-medium text-gray-700">{label}</label>
+    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-green-500 transition-colors">
+      <input
+        type="file"
+        id={id}
+        accept={accept}
+        onChange={(e) => onChange(e.target.files?.[0] || null)}
+        className="hidden"
+      />
+      <label htmlFor={id} className="cursor-pointer block">
+        <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+        <p className="text-sm text-gray-600">
+          {file?.name ? file.name : "Upload file"}
+        </p>
+      </label>
+    </div>
+  </div>
+);
 
 const DirectorsSection: React.FC<DirectorsSectionProps> = ({
   directors,
@@ -281,72 +315,33 @@ const DirectorsSection: React.FC<DirectorsSectionProps> = ({
           </div>
 
           <div className="grid md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700">
-                Licence Front Upload
-              </label>
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={(e) =>
-                  updateDirectorFile(
-                    index,
-                    "licenceFrontFile",
-                    e.target.files?.[0] || null
-                  )
-                }
-                className="w-full border rounded-lg p-2 bg-white"
-              />
-              {director.licenceFrontFile && (
-                <p className="text-xs text-gray-600 mt-1 truncate">
-                  {director.licenceFrontFile.name}
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">
-                Licence Back Upload
-              </label>
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={(e) =>
-                  updateDirectorFile(
-                    index,
-                    "licenceBackFile",
-                    e.target.files?.[0] || null
-                  )
-                }
-                className="w-full border rounded-lg p-2 bg-white"
-              />
-              {director.licenceBackFile && (
-                <p className="text-xs text-gray-600 mt-1 truncate">
-                  {director.licenceBackFile.name}
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">
-                Medicare Card Upload
-              </label>
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={(e) =>
-                  updateDirectorFile(
-                    index,
-                    "medicareFrontFile",
-                    e.target.files?.[0] || null
-                  )
-                }
-                className="w-full border rounded-lg p-2 bg-white"
-              />
-              {director.medicareFrontFile && (
-                <p className="text-xs text-gray-600 mt-1 truncate">
-                  {director.medicareFrontFile.name}
-                </p>
-              )}
-            </div>
+            <UploadTile
+              id={`director-${index}-licence-front`}
+              label="Licence Front Upload"
+              accept="image/*,application/pdf"
+              file={director.licenceFrontFile || null}
+              onChange={(file) =>
+                updateDirectorFile(index, "licenceFrontFile", file)
+              }
+            />
+            <UploadTile
+              id={`director-${index}-licence-back`}
+              label="Licence Back Upload"
+              accept="image/*,application/pdf"
+              file={director.licenceBackFile || null}
+              onChange={(file) =>
+                updateDirectorFile(index, "licenceBackFile", file)
+              }
+            />
+            <UploadTile
+              id={`director-${index}-medicare`}
+              label="Medicare Card Upload"
+              accept="image/*,application/pdf"
+              file={director.medicareFrontFile || null}
+              onChange={(file) =>
+                updateDirectorFile(index, "medicareFrontFile", file)
+              }
+            />
           </div>
         </div>
       ))}

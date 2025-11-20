@@ -55,60 +55,16 @@ const AddressDetailsSection: React.FC<AddressDetailsSectionProps> = ({
             )}
           </div>
         </div>
-        <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Street Address Line 2</label>
-          <input
-            type="text"
-            name="streetAddress2"
-            value={formData.streetAddress2}
-            onChange={handleChange}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">City *</label>
-          <input
-            type="text"
-            name="city"
-            value={formData.city}
-            onChange={handleChange}
-            required
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
-          <select
-            name="state"
-            value={formData.state}
-            onChange={handleChange}
-            required
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-          >
-            <option value="">Please Select</option>
-            <option value="NSW">New South Wales</option>
-            <option value="VIC">Victoria</option>
-            <option value="QLD">Queensland</option>
-            <option value="WA">Western Australia</option>
-            <option value="SA">South Australia</option>
-            <option value="TAS">Tasmania</option>
-            <option value="ACT">Australian Capital Territory</option>
-            <option value="NT">Northern Territory</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Postcode *</label>
-          <input
-            type="text"
-            name="postcode"
-            value={formData.postcode}
-            onChange={handleChange}
-            maxLength={4}
-            required
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-          />
-        </div>
-        {/* Country field removed (Australia-only) */}
+        {(formData.city || formData.state || formData.postcode) && (
+          <div className="md:col-span-2 text-sm text-gray-600">
+            <p>
+              <strong>Detected:</strong>{" "}
+              {[formData.city, formData.state, formData.postcode]
+                .filter(Boolean)
+                .join(", ")}
+            </p>
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Premises Type *</label>
           <select

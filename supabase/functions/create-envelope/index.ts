@@ -212,10 +212,30 @@ const buildTemplateTabs = (data: any) => {
       "lessee_entity_name",
       data?.businessName || data?.entityName
     ),
+    buildTextTab(
+      "lessee_entity_name_pg5",
+      data?.businessName || data?.entityName
+    ),
+    buildTextTab(
+      "lessee_entity_name_pg6",
+      data?.businessName || data?.entityName
+    ),
+    buildTextTab(
+      "lessee_entity_name_pg8",
+      data?.businessName || data?.entityName
+    ),
     buildTextTab("lessee_installation_address", lesseeAddress),
-    buildTextTab("lessee_phone", data?.phone),
+    buildTextTab("lessee_installation_address_pg5", lesseeAddress),
+    buildTextTab("lessee_installation_address_pg6", lesseeAddress),
+    buildTextTab("lessee_installation_address_pg8", lesseeAddress),
+    buildTextTab("lessee_phone_1", data?.phone),
+    buildTextTab("lessee_phone_1_pg8", data?.phone),
     buildTextTab("lessee_email", data?.email),
+    buildTextTab("lessee_email_pg5", data?.email),
     buildTextTab("lessee_abn", data?.abnNumber),
+    buildTextTab("lessee_abn_pg5", data?.abnNumber),
+    buildTextTab("lessee_abn_pg6", data?.abnNumber),
+    buildTextTab("lessee_abn_pg8", data?.abnNumber),
     buildTextTab(
       "supplier_name",
       data?.supplierBusinessName || data?.vendorName
@@ -246,12 +266,19 @@ const buildTemplateTabs = (data: any) => {
   const equipmentTabs = [0, 1, 2].flatMap((idx) => {
     const item = equipment[idx];
     if (!item) return [];
+    const prefix = `equipment_${idx + 1}`;
     return [
       buildTextTab(
-        `equipment_${idx + 1}_desc`,
+        `${prefix}_desc`,
         [item.asset, item.description, item.category].filter(Boolean).join(" ")
       ),
-      buildTextTab(`equipment_${idx + 1}_qty`, item.quantity || item.qty),
+      buildTextTab(`${prefix}_qty`, item.quantity || item.qty),
+      buildTextTab(
+        `${prefix}_system_size`,
+        item.systemSize || item.asset || ""
+      ),
+      buildTextTab(`${prefix}_serial_number`, item.serialNumber),
+      buildTextTab(`${prefix}_manufacturer`, item.manufacturer),
     ];
   });
 
@@ -270,8 +297,24 @@ const buildTemplateTabs = (data: any) => {
     buildTextTab(`director${idx + 1}_date`, director?.signatureDate || ""),
   ]);
 
+  const guarantors = Array.isArray(data?.guarantors) ? data.guarantors : [];
+  const guarantorTabs = guarantors.slice(0, 2).flatMap((guarantor, idx) => [
+    buildTextTab(
+      `guarantor${idx + 1}_name`,
+      [guarantor?.title, guarantor?.firstName, guarantor?.lastName]
+        .filter(Boolean)
+        .join(" ")
+    ),
+    buildTextTab(`guarantor${idx + 1}_address`, guarantor?.address),
+  ]);
+
   return {
-    textTabs: [...textTabs, ...equipmentTabs, ...directorTabs].filter(Boolean),
+    textTabs: [
+      ...textTabs,
+      ...equipmentTabs,
+      ...directorTabs,
+      ...guarantorTabs,
+    ].filter(Boolean),
   };
 };
 
@@ -323,7 +366,6 @@ serve(async (req) => {
         roleName: "Lessee",
         name: contactName,
         email: contactEmail,
-        clientUserId: applicationId,
         tabs,
       },
     ];
@@ -341,7 +383,7 @@ serve(async (req) => {
         body: JSON.stringify({
           templateId: DOCUSIGN_TEMPLATE_ID,
           templateRoles,
-          status: "created",
+          status: "sent",
         }),
       }
     );
@@ -354,35 +396,10 @@ serve(async (req) => {
     const envelopeJson = await envelopeRes.json();
     const envelopeId = envelopeJson.envelopeId;
 
-    const recipientViewRes = await fetch(
-      `${docuSignBaseUrl}/accounts/${DOCUSIGN_ACCOUNT_ID}/envelopes/${envelopeId}/views/recipient`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          returnUrl: `${PORTAL_BASE_URL}/contract/${applicationId}?signed=1`,
-          authenticationMethod: "none",
-          email: contactEmail,
-          userName: contactName,
-          clientUserId: applicationId,
-        }),
-      }
-    );
-
-    if (!recipientViewRes.ok) {
-      const text = await recipientViewRes.text();
-      throw new Error(`Failed to create recipient view: ${text}`);
-    }
-    const viewJson = await recipientViewRes.json();
-
     return new Response(
       JSON.stringify({
         success: true,
         envelopeId,
-        url: viewJson.url,
       }),
       {
         status: 200,

@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect } from "react";
+/* global google */
 
 export type GuarantorInfo = {
   title?: string;
@@ -48,6 +49,39 @@ const GuarantorsSection: React.FC<GuarantorsSectionProps> = ({
       prev.map((g, i) => (i === index ? { ...g, [field]: value } : g))
     );
   };
+
+  useEffect(() => {
+    const bindAutocomplete = () => {
+      guarantors.forEach((_, index) => {
+        const id = `guarantor-address-${index}`;
+        const input = document.getElementById(id) as HTMLInputElement | null;
+        if (input && !(input as any)._acBound) {
+          const ac = new google.maps.places.Autocomplete(input, {
+            types: ["address"],
+            componentRestrictions: { country: "au" },
+          });
+          ac.addListener("place_changed", () => {
+            const place = ac.getPlace();
+            if (place?.formatted_address) {
+              updateGuarantor(index, "address", place.formatted_address);
+            }
+          });
+          (input as any)._acBound = true;
+        }
+      });
+    };
+    if ((window as any).google?.maps?.places) {
+      bindAutocomplete();
+      return;
+    }
+    const timer = window.setInterval(() => {
+      if ((window as any).google?.maps?.places) {
+        window.clearInterval(timer);
+        bindAutocomplete();
+      }
+    }, 400);
+    return () => window.clearInterval(timer);
+  }, [guarantors.length]);
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-6">
@@ -187,6 +221,7 @@ const GuarantorsSection: React.FC<GuarantorsSectionProps> = ({
             <label className="text-sm font-medium text-gray-700">Address</label>
             <input
               type="text"
+              id={`guarantor-address-${index}`}
               value={guarantor.address || ""}
               onChange={(e) =>
                 updateGuarantor(index, "address", e.target.value)

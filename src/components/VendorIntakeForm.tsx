@@ -47,6 +47,7 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack }) => {
     businessName: "",
     entityType: "",
     dateOfAbnRegistration: "",
+    gstFrom: "",
     dateOfIncorporation: "",
     businessAddress: "",
     phone: "",
@@ -171,6 +172,32 @@ useEffect(() => {
   // Re-run when directorCount changes so newly shown inputs get bound
 }, [directorCount]);
 
+  const extractAbrDateValue = (value: any): string | undefined => {
+    if (!value) return undefined;
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const resolved = extractAbrDateValue(item);
+        if (resolved) return resolved;
+      }
+      return undefined;
+    }
+    if (typeof value === "object") {
+      if ("EffectiveFrom" in value) return extractAbrDateValue((value as any).EffectiveFrom);
+      if ("c" in value) return extractAbrDateValue((value as any).c);
+      if ("$" in value) return extractAbrDateValue((value as any).$);
+    }
+    return undefined;
+  };
+
+  const formatAbrDate = (value: any): string | undefined => {
+    const raw = extractAbrDateValue(value);
+    if (!raw) return undefined;
+    const match = raw.match(/Date\((\d+)/);
+    const date = match ? new Date(Number(match[1])) : new Date(raw);
+    if (Number.isNaN(date.getTime())) return undefined;
+    return date.toLocaleDateString("en-AU");
+  };
 
   // -------------------- ABN LOOKUP --------------------
   const handleAbnLookup = async (rawAbn: string) => {
@@ -197,9 +224,15 @@ useEffect(() => {
           data.MainTradingName?.OrganisationName ||
           prev.businessName,
         entityType: data.EntityType?.EntityDescription || prev.entityType,
-        dateOfAbnRegistration: data.ABNStatusEffectiveFrom
-          ? new Date(data.ABNStatusEffectiveFrom).toLocaleDateString("en-AU")
-          : prev.dateOfAbnRegistration,
+        dateOfAbnRegistration:
+          formatAbrDate(data.ABNStatusEffectiveFrom) || prev.dateOfAbnRegistration,
+        gstFrom:
+          formatAbrDate(
+            data.Gst ||
+              data.GST ||
+              data.GoodsAndServicesTax ||
+              data.GoodsAndServicesTaxRegistration
+          ) || prev.gstFrom,
       }));
 
       console.log("✅ ABN lookup success");
@@ -526,6 +559,127 @@ useEffect(() => {
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+
+  const splitAustralianAddress = (address?: string | null) => {
+    if (!address) {
+      return {
+        street: "",
+        city: "",
+        state: "",
+        postcode: "",
+        country: "",
+      };
+    }
+    const parts = address
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const street = parts[0] || "";
+    const stateCodes = ["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"];
+    let city = "";
+    let state = "";
+    let postcode = "";
+    for (const part of parts) {
+      if (!postcode) {
+        const postMatch = part.match(/\b(\d{4})\b/);
+        if (postMatch) postcode = postMatch[1];
+      }
+      if (!state) {
+        const found = stateCodes.find((code) =>
+          part.toUpperCase().includes(code)
+        );
+        if (found) state = found;
+      }
+    }
+    if (parts.length >= 3) {
+      city = parts[parts.length - 3];
+    } else if (parts.length >= 2) {
+      city = parts[parts.length - 2];
+    }
+    return {
+      street,
+      city,
+      state,
+      postcode,
+      country: "Australia",
+    };
+  };
+
+  const normalizeAbn = (value?: string | null) => {
+    if (!value) return null;
+    const digits = value.replace(/\D/g, "");
+    return digits || null;
+  };
+
+  const fetchNextVendorCode = async () => {
+    const { data, error } = await supabase
+      .from("vendors")
+      .select("vendor_code")
+      .not("vendor_code", "is", null)
+      .order("vendor_code", { ascending: false })
+      .limit(1);
+    if (error) throw error;
+    const last = data?.[0]?.vendor_code;
+    const nextNumber = last ? parseInt(last.replace(/\D/g, ""), 10) + 1 : 1;
+    return `V${String(nextNumber).padStart(5, "0")}`;
+  };
+
+  const upsertVendorRecord = async (pdfUrl: string) => {
+    const abn = normalizeAbn(formData.abnNumber);
+    let existingVendor = null;
+    if (abn) {
+      const { data, error } = await supabase
+        .from("vendors")
+        .select("*")
+        .eq("abn", abn)
+        .maybeSingle();
+      if (error) throw error;
+      existingVendor = data;
+    }
+
+    const metadata = {
+      phone: formData.phone || "",
+      mobile: formData.mobile || "",
+      website: formData.website || "",
+      address: formData.businessAddress || "",
+      address_components: splitAustralianAddress(formData.businessAddress),
+      pdf_url: pdfUrl,
+      last_submitted_at: new Date().toISOString(),
+    };
+
+    const basePayload: any = {
+      name: formData.businessName || "",
+      abn,
+      contact_name: formData.contactName || "",
+      contact_email: formData.email || "",
+      status: "pending",
+      metadata,
+    };
+
+    if (existingVendor) {
+      const updates: any = { ...basePayload };
+      if (!existingVendor.vendor_code) {
+        updates.vendor_code = await fetchNextVendorCode();
+      }
+      const { data, error } = await supabase
+        .from("vendors")
+        .update(updates)
+        .eq("id", existingVendor.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+
+    const vendor_code = await fetchNextVendorCode();
+    const { data, error } = await supabase
+      .from("vendors")
+      .insert({ ...basePayload, vendor_code })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  };
   // -------------------- SUBMIT FORM --------------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -548,6 +702,9 @@ useEffect(() => {
         .from("uploads")
         .getPublicUrl(`vendor_forms/${pdfFileName}`);
       const pdfUrl = pdfUrlData.publicUrl;
+
+      const vendorRecord = await upsertVendorRecord(pdfUrl);
+      const vendorCode = vendorRecord?.vendor_code;
 
       // 2️⃣ Licence URLs
       const licenceSections: string[] = [];
@@ -612,6 +769,7 @@ Please log in to the ASLS Vendor Portal for full details.
           <h2>New Vendor Intake Submission</h2>
           <p><strong>Business Name:</strong> ${formData.businessName || "N/A"}</p>
           <p><strong>ABN:</strong> ${formData.abnNumber || "N/A"}</p>
+          <p><strong>Vendor ID:</strong> ${vendorCode || "Pending"}</p>
           <p><strong>Entity Type:</strong> ${formData.entityType || "N/A"}</p>
           <p><strong>Signed By:</strong> ${formData.signatureName || "N/A"} on ${formData.signatureDate || "N/A"}</p>
           <p><strong>PDF Link:</strong> <a href="${pdfUrl}" target="_blank">${pdfUrl}</a></p>
@@ -643,9 +801,11 @@ Dear ${formData.businessName},
 
 Thank you for submitting your Vendor Accreditation Application with Australian Solar Lending Solutions.
 
+Your provisional ASLS Vendor ID is ${vendorCode || "pending allocation"}. Keep this handy for future correspondence and when submitting applications.
+
 Your application is now under review. Our Client Services team will contact you within 24 hours on the number provided to guide you through the next steps.
 
-Once accredited, you’ll receive an email inviting you to access our Vendor Portal to submit finance applications and monitor their progress.
+Once accredited, you will receive an email inviting you to access our Vendor Portal to submit finance applications and monitor their progress.
 
 We appreciate your partnership and look forward to working with you.
 
@@ -667,10 +827,12 @@ Australian Solar Lending Solutions
       <p>Thank you for submitting your <strong>Vendor Accreditation Application</strong> with 
       <strong>Australian Solar Lending Solutions (ASLS)</strong>.</p>
 
+      <p>Your provisional ASLS Vendor ID is <strong>${vendorCode || "Pending"}</strong>. Please quote this number whenever you contact us.</p>
+
       <p>Your application is now under review. Our Client Services team will be in touch within 
       <strong>24 hours</strong> on the number provided to guide you through the next steps.</p>
 
-      <p>Once accredited, you’ll receive an invitation to access our Vendor Portal to submit and track your finance applications.</p>
+      <p>Once accredited, you will receive an invitation to access our Vendor Portal to submit and track your finance applications.</p>
 
       <p>You can visit our portal anytime at 
         <a href="https://portal.asls.net.au" target="_blank" style="color:#00796b; text-decoration:none; font-weight:bold;">
@@ -688,7 +850,7 @@ Australian Solar Lending Solutions
     </div>
 
     <div style="text-align:center; font-size:12px; color:#888; padding:15px; background-color:#f1f1f1;">
-      © ${new Date().getFullYear()} Australian Solar Lending Solutions. All rights reserved.
+      Ac ${new Date().getFullYear()} Australian Solar Lending Solutions. All rights reserved.
     </div>
   </div>
 </div>
@@ -709,10 +871,10 @@ Australian Solar Lending Solutions
 
       if (!vendorRes.ok) throw new Error("Vendor confirmation email failed to send");
 
-      alert("✅ Submission sent successfully! Thank you.");
+      alert(`Submission sent successfully! Your Vendor ID is ${vendorCode || "pending allocation"}.`);
     } catch (error: any) {
-      console.error("❌ Submission Error:", error);
-      alert(`❌ Submission Error: ${error.message}`);
+      console.error("Submission Error:", error);
+      alert(`Submission Error: ${error.message}`);
     } finally {
       setLoading(false);
     }

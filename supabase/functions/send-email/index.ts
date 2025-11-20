@@ -15,7 +15,8 @@ serve(async (req) => {
       ? origin
       : "",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, apikey, X-Client-Info",
   };
 
   if (req.method === "OPTIONS") {
