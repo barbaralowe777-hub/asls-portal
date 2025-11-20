@@ -164,7 +164,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
       try {
         const { data, error } = await supabase
           .from("vendors")
-          .select("vendor_code,name,contact_name,contact_email,abn,metadata")
+          .select("vendor_code,name,contact_name,contact_email,abn,metadata,vendor_address")
           .eq("vendor_code", normalized)
           .maybeSingle();
         if (error) throw error;
@@ -175,26 +175,28 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
         }
         const metadata = (data.metadata ?? {}) as Record<string, any>;
         const addressParts = extractVendorAddress(metadata);
-        setFormData((prev) => {
-          const streetLine =
-            addressParts.street || metadata.address || prev.supplierAddress;
-          return {
-            ...prev,
-            vendorId: data.vendor_code || normalized,
-            vendorName: data.name || prev.vendorName,
-            supplierBusinessName: data.name || prev.supplierBusinessName,
-            supplierAbn: data.abn || prev.supplierAbn,
-            supplierAddress: streetLine,
-            supplierCity: addressParts.city || prev.supplierCity,
-            supplierState: addressParts.state || prev.supplierState,
-            supplierPostcode: addressParts.postcode || prev.supplierPostcode,
-            supplierEmail: data.contact_email || prev.supplierEmail,
-            supplierPhone:
-              metadata.phone || metadata.mobile || prev.supplierPhone,
-            supplierAccredited: prev.supplierAccredited || "Yes",
-          };
-        });
-        setVendorPrefillLocked(true);
+        const streetLine =
+          data.vendor_address ||
+          addressParts.street ||
+          metadata.address ||
+          "";
+        setFormData((prev) => ({
+          ...prev,
+          vendorId: data.vendor_code || normalized,
+          vendorName: data.name || prev.vendorName,
+          supplierBusinessName: data.name || prev.supplierBusinessName,
+          supplierAbn: data.abn || prev.supplierAbn,
+          supplierAddress: streetLine || prev.supplierAddress,
+          supplierCity: addressParts.city || prev.supplierCity,
+          supplierState: addressParts.state || prev.supplierState,
+          supplierPostcode: addressParts.postcode || prev.supplierPostcode,
+          supplierEmail: data.contact_email || prev.supplierEmail,
+          supplierPhone:
+            metadata.phone || metadata.mobile || prev.supplierPhone,
+          supplierAccredited: prev.supplierAccredited || "Yes",
+        }));
+        // Only lock fields if we actually populated an address; otherwise keep editable
+        setVendorPrefillLocked(!!streetLine);
         setVendorPrefillError(null);
       } catch (err: any) {
         console.error("Vendor lookup failed", err);
