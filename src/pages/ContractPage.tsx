@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import SignatureCanvas from "react-signature-canvas";
 import { supabase } from "@/lib/supabase";
 import { loadTemplate, drawText, drawPng, saveToBlob, clearArea, drawRect } from "@/lib/pdfFill";
 import { contractFieldCoords as F } from "@/config/contractFields";
@@ -75,16 +74,38 @@ const hasOutstandingTasks = (d: any) => {
   return !(docsOk && directorsOk);
 };
 
+const CM_TO_PX = 28.35;
+const BASE_Y_ADJUST = 32;
+const PAGE_X_OFFSETS: Record<number, number> = {
+  0: -CM_TO_PX,
+  4: -CM_TO_PX,
+  7: -CM_TO_PX,
+};
+const PAGE_Y_EXTRA_OFFSETS: Record<number, number> = {
+  5: CM_TO_PX * 4,
+  7: -CM_TO_PX * 1.5,
+};
+const LESSEE_REPEAT_PAGES = {
+  entityName: [4, 5, 7],
+  installationAddress: [4, 5, 7],
+  phone: [7],
+  email: [4],
+  abn: [4, 5, 7],
+};
+type FieldOverride = { page?: number; xShift?: number; yShift?: number };
+const DIRECTOR_BASE_Y_SHIFT = CM_TO_PX * 5;
+const toOverrides = (pages: number[]) => pages.map((page) => ({ page }));
+
 const ContractPage: React.FC = () => {
   const { appId } = useParams();
   const navigate = useNavigate();
-  const sigRef = useRef<SignatureCanvas | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [app, setApp] = useState<AppRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [profileRole, setProfileRole] = useState<string | null>(null);
   const lastPreviewUrl = useRef<string | null>(null);
   const pdfSrc = useMemo(() => (previewUrl ? encodeURI(previewUrl) : null), [previewUrl]);
 
@@ -158,6 +179,30 @@ const ContractPage: React.FC = () => {
     load();
   }, [appId]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session) return;
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .single();
+        setProfileRole(profile?.role || null);
+      } catch (err) {
+        console.warn("Failed to load profile role", err);
+      }
+    })();
+  }, []);
+
+  const getPageOffsets = (page: number) => ({
+    x: PAGE_X_OFFSETS[page] ?? 0,
+    y: BASE_Y_ADJUST + (PAGE_Y_EXTRA_OFFSETS[page] ?? 0),
+  });
+
   const buildFilledPdf = useCallback(
     async (
       data: {
@@ -188,8 +233,7 @@ const ContractPage: React.FC = () => {
           specialConditions: string;
         };
         directors: Array<{ fullName?: string; date?: string; position?: string }>;
-      },
-      includeSignature: boolean
+      }
     ) => {
       // Load template (try common names)
       let doc: PDFDocument | undefined;
@@ -202,21 +246,30 @@ const ContractPage: React.FC = () => {
 
       const writeField = async (
         field: typeof F.lessee.entityName,
-        text: string
+        text: string,
+        override?: FieldOverride
       ) => {
+        const page = override?.page ?? field.page;
+        const offsets = getPageOffsets(page);
+        const xShift = override?.xShift ?? 0;
+        const yShift = override?.yShift ?? 0;
+        const baseX = field.x + xShift;
+        const baseY = field.y + yShift;
+        const adjustedX = baseX + offsets.x;
+        const adjustedY = baseY + offsets.y;
         if (field.clearWidth && field.clearHeight) {
           clearArea(doc, {
-            page: field.page,
-          x: field.x + (field.clearOffsetX ?? 0),
-          y: field.y + (field.clearOffsetY ?? 0),
-          width: field.clearWidth,
-          height: field.clearHeight,
-        });
-      }
+            page,
+            x: baseX + (field.clearOffsetX ?? 0) + offsets.x,
+            y: adjustedY + (field.clearOffsetY ?? 0),
+            width: field.clearWidth,
+            height: field.clearHeight,
+          });
+        }
         await drawText(doc, {
-          page: field.page,
-          x: field.x,
-          y: field.y,
+          page,
+          x: adjustedX,
+          y: adjustedY,
           text,
           fontSize: field.fontSize,
         });
@@ -224,57 +277,46 @@ const ContractPage: React.FC = () => {
 
       const writeIfPresent = async (
         field: typeof F.lessee.entityName | undefined,
-        value?: string | null
+        value?: string | null,
+        options?: { baseOverride?: FieldOverride; extraOverrides?: FieldOverride[] }
       ) => {
         if (!field || !value) return;
         const safeText = String(value);
         if (!safeText.trim()) return;
-        await writeField(field, safeText);
-      };
-
-      const wrapText = (text: string, maxChars = 80) => {
-        const words = text.split(/\s+/);
-        const lines: string[] = [];
-        let current = "";
-        for (const word of words) {
-          if (!word) continue;
-          if ((current + " " + word).trim().length > maxChars) {
-            if (current) lines.push(current.trim());
-            current = word;
-          } else {
-            current = current ? `${current} ${word}` : word;
+        await writeField(field, safeText, options?.baseOverride);
+        if (options?.extraOverrides) {
+          for (const override of options.extraOverrides) {
+            await writeField(field, safeText, override);
           }
-        }
-        if (current) lines.push(current.trim());
-        return lines.length ? lines : [text];
-      };
-
-      const writeMultilineField = async (
-        field: (typeof F.finance.specialConditions) | undefined,
-        value?: string | null
-      ) => {
-        if (!field || !value) return;
-        const text = String(value);
-        if (!text.trim()) return;
-        const lineHeight = field.lineHeight ?? (field.fontSize || 10) + 2;
-        const maxChars = field.maxCharsPerLine ?? 80;
-        const lines = wrapText(text, maxChars);
-        for (let i = 0; i < lines.length; i += 1) {
-          const line = lines[i];
-          if (!line) continue;
-          await writeField({ ...field, y: field.y - i * lineHeight }, line);
         }
       };
 
       // Lessee information
-      await writeIfPresent(F.lessee?.entityName, data.lessee?.entityName);
+      await writeIfPresent(
+        F.lessee?.entityName,
+        data.lessee?.entityName,
+        { extraOverrides: toOverrides(LESSEE_REPEAT_PAGES.entityName) }
+      );
       await writeIfPresent(
         F.lessee?.installationAddress,
-        data.lessee?.installationAddress
+        data.lessee?.installationAddress,
+        { extraOverrides: toOverrides(LESSEE_REPEAT_PAGES.installationAddress) }
       );
-      await writeIfPresent(F.lessee?.phone, data.lessee?.phone);
-      await writeIfPresent(F.lessee?.email, data.lessee?.email);
-      await writeIfPresent(F.lessee?.abn, data.lessee?.abn);
+      await writeIfPresent(
+        F.lessee?.phone,
+        data.lessee?.phone,
+        { extraOverrides: toOverrides(LESSEE_REPEAT_PAGES.phone) }
+      );
+      await writeIfPresent(
+        F.lessee?.email,
+        data.lessee?.email,
+        { extraOverrides: toOverrides(LESSEE_REPEAT_PAGES.email) }
+      );
+      await writeIfPresent(
+        F.lessee?.abn,
+        data.lessee?.abn,
+        { extraOverrides: toOverrides(LESSEE_REPEAT_PAGES.abn) }
+      );
 
       // Supplier
       await writeIfPresent(F.supplier?.name, data.supplier?.supplierName);
@@ -317,10 +359,6 @@ const ContractPage: React.FC = () => {
         data.finance?.monthlyPayment
       );
       await writeIfPresent(F.finance?.term, data.finance?.term);
-      await writeMultilineField(
-        F.finance?.specialConditions,
-        data.finance?.specialConditions
-      );
 
       if (Array.isArray(F.directors) && F.directors.length) {
         const directors = Array.isArray(data.directors) ? data.directors : [];
@@ -329,12 +367,18 @@ const ContractPage: React.FC = () => {
           const fieldSet = F.directors[i];
           const director = directors[i];
           if (!director) continue;
-          await writeIfPresent(fieldSet.name, director.fullName || "");
+          const baseOverride = { yShift: DIRECTOR_BASE_Y_SHIFT };
+          await writeIfPresent(fieldSet.name, director.fullName || "", {
+            baseOverride,
+          });
           await writeIfPresent(
             fieldSet.position,
-            director.position || "Director"
+            director.position || "Director",
+            { baseOverride }
           );
-          await writeIfPresent(fieldSet.date, director.date || "");
+          await writeIfPresent(fieldSet.date, director.date || "", {
+            baseOverride,
+          });
         }
       }
       if (Array.isArray(F.equipmentDescriptions) && F.equipmentDescriptions.length) {
@@ -380,12 +424,14 @@ const ContractPage: React.FC = () => {
         if (!field) return;
         const width = field.clearWidth ?? 140;
         const height = field.clearHeight ?? ((field.fontSize || 10) + 8);
-        const x = field.clearWidth
+        const offsets = getPageOffsets(field.page);
+        const x = (field.clearWidth
           ? field.x + (field.clearOffsetX ?? 0)
-          : field.x - 2;
-        const y = field.clearHeight
+          : field.x - 2) + offsets.x;
+        const baseY = field.clearHeight
           ? field.y + (field.clearOffsetY ?? 0)
           : field.y - 2;
+        const y = baseY + offsets.y;
         await drawRect(doc, {
           page: field.page,
           x,
@@ -428,21 +474,12 @@ const ContractPage: React.FC = () => {
       );
       pushField(F.finance?.monthlyPayment, "finance.monthlyPayment");
       pushField(F.finance?.term, "finance.term");
-      pushField(F.finance?.specialConditions, "finance.specialConditions");
       F.directors?.forEach((set, idx) => {
         pushField(set.name, `director[${idx}].name`);
         pushField(set.position, `director[${idx}].position`);
         pushField(set.date, `director[${idx}].date`);
       });
-      pushField(F.signature, "signature");
       await Promise.all(overlays);
-    }
-
-    // Optional signature overlay for preview
-    if (includeSignature && sigRef.current && !sigRef.current.isEmpty()) {
-      const dataUrl = sigRef.current.getTrimmedCanvas().toDataURL("image/png");
-      const pngBytes = await (await fetch(dataUrl)).arrayBuffer();
-      await drawPng(doc, { page: F.signature.page, x: F.signature.x, y: F.signature.y, width: F.signature.width, height: F.signature.height, pngBytes });
     }
 
     return await saveToBlob(doc);
@@ -453,7 +490,7 @@ const ContractPage: React.FC = () => {
     if (!app) return;
     (async () => {
       try {
-        const blob = await buildFilledPdf(display, false);
+        const blob = await buildFilledPdf(display);
         const url = URL.createObjectURL(blob);
         if (lastPreviewUrl.current) URL.revokeObjectURL(lastPreviewUrl.current);
         lastPreviewUrl.current = url;
@@ -581,17 +618,30 @@ const ContractPage: React.FC = () => {
     };
   }, [form]);
 
+  const goToDashboard = useCallback(() => {
+    const fallback =
+      profileRole === "admin"
+        ? "/admin-dashboard"
+        : profileRole === "agent"
+        ? "/agent-dashboard"
+        : "/vendor-dashboard";
+    navigate(fallback);
+  }, [navigate, profileRole]);
+
+  const handleBack = useCallback(() => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      goToDashboard();
+    }
+  }, [navigate, goToDashboard]);
+
   const handleSave = async () => {
     if (!appId) return;
-    if (!sigRef.current || sigRef.current.isEmpty()) {
-      setToast("Please add a signature before saving.");
-      setTimeout(() => setToast(null), 3500);
-      return;
-    }
     setSaving(true);
     try {
-      // Build filled PDF with signature
-      const blob = await buildFilledPdf(display, true);
+      // Build filled PDF (DocuSign captures signatures separately)
+      const blob = await buildFilledPdf(display);
 
       if (isDemo) {
         // Download locally for preview, skip upload/email/status
@@ -605,7 +655,7 @@ const ContractPage: React.FC = () => {
         URL.revokeObjectURL(url);
         setToast('Signed contract downloaded (demo).');
         setTimeout(() => setToast(null), 2500);
-        navigate('/vendor-dashboard');
+        goToDashboard();
         return;
       }
 
@@ -642,9 +692,22 @@ const ContractPage: React.FC = () => {
         },
       });
 
-      setToast("Contract saved and emailed to admin.");
+      try {
+        const { error: envelopeError } = await supabase.functions.invoke("create-envelope", {
+          body: { applicationId: appId },
+        });
+        if (envelopeError) throw envelopeError;
+      } catch (dsErr: any) {
+        console.error("DocuSign dispatch failed", dsErr);
+        setToast(dsErr?.message || "Contract saved but DocuSign failed. Please try again.");
+        setTimeout(() => setToast(null), 4000);
+        setSaving(false);
+        return;
+      }
+
+      setToast("Contract saved and DocuSign sent to the applicant.");
       setTimeout(() => setToast(null), 3000);
-      navigate("/vendor-dashboard");
+      goToDashboard();
     } catch (e: any) {
       setError(e.message || "Failed to save contract.");
     } finally {
@@ -691,41 +754,10 @@ const ContractPage: React.FC = () => {
           <div><span className="font-semibold">Term:</span> {display.term}</div>
         </div>
 
-        <div className="mb-4">
-          <label className="block font-semibold text-gray-700 mb-2">Signature</label>
-          <div className="border rounded-lg bg-gray-100 p-2">
-            <SignatureCanvas
-              ref={sigRef}
-              penColor="#0a7f2e"
-              onEnd={async () => {
-                try {
-                  const blob = await buildFilledPdf(display, true);
-                  const url = URL.createObjectURL(blob);
-                  if (lastPreviewUrl.current) URL.revokeObjectURL(lastPreviewUrl.current);
-                  lastPreviewUrl.current = url;
-                  setPreviewUrl(url);
-                } catch (err) {
-                  console.error("Contract preview refresh failed", err);
-                }
-              }}
-              canvasProps={{ width: 640, height: 180, className: "w-full h-44 bg-white rounded" }}
-            />
-          </div>
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              onClick={() => sigRef.current?.clear()}
-              className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-800"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-
         <div className="flex justify-end gap-3">
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={handleBack}
             className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
           >
             Back

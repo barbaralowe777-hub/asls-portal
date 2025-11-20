@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Download, Eye, Plus, Calculator, Sun } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -57,6 +57,21 @@ const AgentDashboard: React.FC = () => {
     load();
   }, []);
 
+  const computeTasks = useCallback((row: AppRow) => {
+    const d = row.data || {};
+    const files = (d.files || {}) as Record<string, string[]>;
+    const has = (key: string) => Array.isArray(files[key]) && files[key].length > 0;
+
+    const tasks: string[] = [];
+    if (d.premisesType === "Rented" && !has("lease_agreement"))
+      tasks.push("Upload Lease Agreement");
+    if (d.premisesType === "Owned" && !has("rates_notice"))
+      tasks.push("Upload Rates Notice");
+    if (d.entityType === "Trust" && !has("trust_deed"))
+      tasks.push("Upload Trust Deeds");
+    return tasks;
+  }, []);
+
   const filteredApps = useMemo(() => {
     let list = apps;
     if (statusFilter !== "all") list = list.filter((a) => a.status === statusFilter);
@@ -72,7 +87,7 @@ const AgentDashboard: React.FC = () => {
       list = list.filter((a) => computeTasks(a).length > 0);
     }
     return list;
-  }, [apps, statusFilter, searchTerm, hasTasksOnly]);
+  }, [apps, statusFilter, searchTerm, hasTasksOnly, computeTasks]);
 
   const parseFinance = (s?: string | null) => {
     if (!s) return 0;
@@ -132,21 +147,6 @@ const AgentDashboard: React.FC = () => {
     ],
     [filteredApps]
   );
-
-  const computeTasks = (row: AppRow) => {
-    const d = row.data || {};
-    const files = (d.files || {}) as Record<string, string[]>;
-    const has = (key: string) => Array.isArray(files[key]) && files[key].length > 0;
-
-    const tasks: string[] = [];
-    if (d.premisesType === "Rented" && !has("lease_agreement"))
-      tasks.push("Upload Lease Agreement");
-    if (d.premisesType === "Owned" && !has("rates_notice"))
-      tasks.push("Upload Rates Notice");
-    if (d.entityType === "Trust" && !has("trust_deed"))
-      tasks.push("Upload Trust Deeds");
-    return tasks;
-  };
 
   const exportCSV = () => {
     if (!filteredApps.length) return alert("No data to export");
