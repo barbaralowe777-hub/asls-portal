@@ -164,7 +164,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
       try {
         const { data, error } = await supabase
           .from("vendors")
-          .select("vendor_code,name,contact_name,contact_email,abn,metadata,vendor_address")
+          .select("vendor_code,name,contact_name,contact_email,abn,metadata,vendor_address,vendor_phone")
           .eq("vendor_code", normalized)
           .maybeSingle();
         if (error) throw error;
@@ -192,7 +192,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
           supplierPostcode: addressParts.postcode || prev.supplierPostcode,
           supplierEmail: data.contact_email || prev.supplierEmail,
           supplierPhone:
-            metadata.phone || metadata.mobile || prev.supplierPhone,
+            data.vendor_phone || metadata.phone || metadata.mobile || prev.supplierPhone,
           supplierAccredited: prev.supplierAccredited || "Yes",
         }));
         // Only lock fields if we actually populated an address; otherwise keep editable

@@ -146,52 +146,6 @@ const SupplierSection: React.FC<SupplierSectionProps> = ({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">City *</label>
-          <input
-            type="text"
-            name="supplierCity"
-            value={formData.supplierCity}
-            onChange={handleChange}
-            required
-            readOnly={vendorPrefillLocked}
-            className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 ${lockClass}`}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
-          <select
-            name="supplierState"
-            value={formData.supplierState}
-            onChange={handleChange}
-            required
-            disabled={vendorPrefillLocked}
-            className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 ${lockClass}`}
-          >
-            <option value="">Please Select</option>
-            <option value="NSW">New South Wales</option>
-            <option value="VIC">Victoria</option>
-            <option value="QLD">Queensland</option>
-            <option value="WA">Western Australia</option>
-            <option value="SA">South Australia</option>
-            <option value="TAS">Tasmania</option>
-            <option value="ACT">Australian Capital Territory</option>
-            <option value="NT">Northern Territory</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Postcode *</label>
-          <input
-            type="text"
-            name="supplierPostcode"
-            value={formData.supplierPostcode}
-            onChange={handleChange}
-            maxLength={4}
-            required
-            readOnly={vendorPrefillLocked}
-            className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 ${lockClass}`}
-          />
-        </div>
-        <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
           <input
             type="email"
