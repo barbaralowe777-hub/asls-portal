@@ -23,7 +23,7 @@ const RepaymentCalculator: React.FC = () => {
   const [loanAmount, setLoanAmount] = useState<string>("");
   const [loanTerm, setLoanTerm] = useState<string>("60");
   const [industry, setIndustry] = useState<string>("General");
-  const [underTwoYears, setUnderTwoYears] = useState<boolean>(false);
+  const [underTwoYears, setUnderTwoYears] = useState<boolean | null>(null);
   const [monthlyRepayment, setMonthlyRepayment] = useState<number | null>(null);
   const [weeklyRepayment, setWeeklyRepayment] = useState<number | null>(null);
 
@@ -42,6 +42,10 @@ const RepaymentCalculator: React.FC = () => {
     const amount = parseFloat(loanAmount);
     if (isNaN(amount) || amount <= 0) {
       alert("Please enter a valid loan amount");
+      return;
+    }
+    if (underTwoYears === null) {
+      alert("Please confirm if the ABN has been registered for less than 2 years.");
       return;
     }
 
@@ -67,7 +71,7 @@ const RepaymentCalculator: React.FC = () => {
     setLoanAmount("");
     setLoanTerm("60");
     setIndustry("General");
-    setUnderTwoYears(false);
+    setUnderTwoYears(null);
     setMonthlyRepayment(null);
     setWeeklyRepayment(null);
   };
@@ -150,15 +154,33 @@ const RepaymentCalculator: React.FC = () => {
             </div>
 
             {/* ABN age override */}
-            <label className="inline-flex items-center text-sm text-gray-700">
-              <input
-                type="checkbox"
-                className="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded"
-                checked={underTwoYears}
-                onChange={(e) => setUnderTwoYears(e.target.checked)}
-              />
-              ABN registered less than 2 years
-            </label>
+            <div className="flex flex-col text-sm text-gray-700">
+              <span className="font-medium">ABN registered less than 2 years? *</span>
+              <div className="flex items-center gap-4 mt-2">
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="abnAge"
+                    value="yes"
+                    checked={underTwoYears === true}
+                    onChange={() => setUnderTwoYears(true)}
+                    className="h-4 w-4 text-blue-600 border-gray-300"
+                  />
+                  Yes
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="abnAge"
+                    value="no"
+                    checked={underTwoYears === false}
+                    onChange={() => setUnderTwoYears(false)}
+                    className="h-4 w-4 text-blue-600 border-gray-300"
+                  />
+                  No
+                </label>
+              </div>
+            </div>
 
             {/* Buttons */}
             <div className="flex items-center gap-3 pt-2">
