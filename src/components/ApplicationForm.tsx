@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -49,6 +49,57 @@ interface ApplicationFormProps {
 }
 
 const digitsOnly = (v: string) => v.replace(/\D/g, "");
+const normalizeVendorCode = (value: string) =>
+  (value || "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+const AU_STATE_CODES = ["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"];
+const splitAustralianAddress = (address?: string | null) => {
+  const base = { street: "", city: "", state: "", postcode: "" };
+  if (!address) return base;
+  const parts = address
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const street = parts[0] || "";
+  let city = "";
+  let state = "";
+  let postcode = "";
+  for (const part of parts) {
+    if (!postcode) {
+      const postMatch = part.match(/\b(\d{4})\b/);
+      if (postMatch) postcode = postMatch[1];
+    }
+    if (!state) {
+      const found = AU_STATE_CODES.find((code) =>
+        part.toUpperCase().includes(code)
+      );
+      if (found) state = found;
+    }
+  }
+  if (parts.length >= 3) {
+    city = parts[parts.length - 3];
+  } else if (parts.length >= 2) {
+    city = parts[parts.length - 2];
+  }
+  return {
+    street,
+    city,
+    state,
+    postcode,
+  };
+};
+const extractVendorAddress = (metadata?: any) => {
+  if (metadata?.address_components && typeof metadata.address_components === "object") {
+    const parts = metadata.address_components;
+    return {
+      street: parts.street || parts.address || "",
+      city: parts.city || "",
+      state: parts.state || "",
+      postcode: parts.postcode || "",
+    };
+  }
+  if (metadata?.address) return splitAustralianAddress(metadata.address);
+  return splitAustralianAddress();
+};
 
 const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) => {
   const [loading, setLoading] = useState(false);
@@ -63,13 +114,108 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
   const [supplierAbnLoading, setSupplierAbnLoading] = useState(false);
   const [addressLoading, setAddressLoading] = useState(false);
   const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
+  const [profileRole, setProfileRole] = useState<string | null>(null);
+  const [vendorPrefillLoading, setVendorPrefillLoading] = useState(false);
+  const [vendorPrefillError, setVendorPrefillError] = useState<string | null>(null);
+  const [vendorPrefillLocked, setVendorPrefillLocked] = useState(false);
 
   const [files, setFiles] = useState({
-    driversLicenseFront: null as File | null,
-    driversLicenseBack: null as File | null,
-    medicareCard: null as File | null,
     supportingDocs: [] as Array<{ file: File; type?: string; name?: string }>,
   });
+
+  const clearVendorPrefillFields = useCallback(() => {
+    setVendorPrefillLocked(false);
+    setVendorPrefillError(null);
+    setFormData((prev) => ({
+      ...prev,
+      vendorName: "",
+      supplierBusinessName: "",
+      supplierAbn: "",
+      supplierAddress: "",
+      supplierCity: "",
+      supplierState: "",
+      supplierPostcode: "",
+      supplierEmail: "",
+      supplierPhone: "",
+    }));
+  }, []);
+
+  const fetchVendorDetails = useCallback(
+    async (code: string) => {
+      const normalized = normalizeVendorCode(code);
+      if (!normalized) {
+        clearVendorPrefillFields();
+        return;
+      }
+      if (isDemo) {
+        setVendorPrefillLocked(false);
+        setVendorPrefillError("Vendor lookup is disabled in demo mode.");
+        return;
+      }
+      setVendorPrefillLoading(true);
+      setVendorPrefillError(null);
+      try {
+        const { data, error } = await supabase
+          .from("vendors")
+          .select("vendor_code,name,contact_name,contact_email,abn,metadata")
+          .eq("vendor_code", normalized)
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) {
+          clearVendorPrefillFields();
+          setVendorPrefillError("Vendor ID not found");
+          return;
+        }
+        const metadata = (data.metadata ?? {}) as Record<string, any>;
+        const addressParts = extractVendorAddress(metadata);
+        setFormData((prev) => {
+          const streetLine =
+            addressParts.street || metadata.address || prev.supplierAddress;
+          return {
+            ...prev,
+            vendorId: data.vendor_code || normalized,
+            vendorName: data.name || prev.vendorName,
+            supplierBusinessName: data.name || prev.supplierBusinessName,
+            supplierAbn: data.abn || prev.supplierAbn,
+            supplierAddress: streetLine,
+            supplierCity: addressParts.city || prev.supplierCity,
+            supplierState: addressParts.state || prev.supplierState,
+            supplierPostcode: addressParts.postcode || prev.supplierPostcode,
+            supplierEmail: data.contact_email || prev.supplierEmail,
+            supplierPhone:
+              metadata.phone || metadata.mobile || prev.supplierPhone,
+            supplierAccredited: prev.supplierAccredited || "Yes",
+          };
+        });
+        setVendorPrefillLocked(true);
+        setVendorPrefillError(null);
+      } catch (err: any) {
+        console.error("Vendor lookup failed", err);
+        setVendorPrefillLocked(false);
+        setVendorPrefillError(err?.message || "Unable to load vendor details");
+      } finally {
+        setVendorPrefillLoading(false);
+      }
+    },
+    [clearVendorPrefillFields, isDemo]
+  );
+
+  const scheduleVendorLookup = useCallback(
+    (code: string) => {
+      if (vendorLookupTimeoutRef.current) {
+        window.clearTimeout(vendorLookupTimeoutRef.current);
+      }
+      const normalized = normalizeVendorCode(code);
+      if (!normalized) {
+        clearVendorPrefillFields();
+        return;
+      }
+      vendorLookupTimeoutRef.current = window.setTimeout(() => {
+        fetchVendorDetails(normalized);
+      }, 400) as any;
+    },
+    [fetchVendorDetails, clearVendorPrefillFields]
+  );
 
 const [equipmentItems, setEquipmentItems] = useState([
   {
@@ -139,6 +285,7 @@ const [equipmentItems, setEquipmentItems] = useState([
     createBlankGuarantor(),
   ]);
   const directorAddressRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const vendorLookupTimeoutRef = useRef<number | null>(null);
 
   const DOC_FEE = 385; // kept for info; not used in calc below
   const UPLIFT_INDUSTRIES = ["Beauty", "Gym", "Hospitality"]; // +1% uplift
@@ -202,12 +349,38 @@ const [equipmentItems, setEquipmentItems] = useState([
           .select('*')
           .eq('id', session.user.id)
           .single();
-        setVendorId((profile as any)?.vendor_id || (profile as any)?.vendorId || null);
+        const profileVendorId =
+          (profile as any)?.vendor_id || (profile as any)?.vendorId || null;
+        const profileAgentCode =
+          (profile as any)?.agent_code ||
+          (profile as any)?.agentCode ||
+          (profile as any)?.agent_id ||
+          session.user.user_metadata?.agent_code ||
+          null;
+        setVendorId(profileVendorId);
+        setAgentId(profileAgentCode || session.user.id);
+        setProfileRole((profile as any)?.role || null);
       } catch (e) {
         console.warn('Failed to load vendor_id', e);
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!vendorId || isDemo) return;
+    const normalized = normalizeVendorCode(vendorId);
+    setFormData((prev) => ({ ...prev, vendorId: normalized }));
+    fetchVendorDetails(normalized);
+  }, [vendorId, isDemo, fetchVendorDetails]);
+
+  useEffect(
+    () => () => {
+      if (vendorLookupTimeoutRef.current) {
+        window.clearTimeout(vendorLookupTimeoutRef.current);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     const bindAutocomplete = () => {
@@ -270,19 +443,28 @@ const [equipmentItems, setEquipmentItems] = useState([
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target as HTMLInputElement;
+    let valueToStore = value;
+    if (name === "vendorId") {
+      valueToStore = normalizeVendorCode(value);
+    }
     setFormData((prev) => {
-      const next = { ...prev, [name]: value } as any;
+      const next = { ...prev, [name]: valueToStore } as any;
       if (name === 'invoiceAmount' || name === 'depositPaid') {
-        const inv = parseFloat(name === 'invoiceAmount' ? value : next.invoiceAmount || '0') || 0;
-        const dep = parseFloat(name === 'depositPaid' ? value : next.depositPaid || '0') || 0;
+        const inv = parseFloat(name === 'invoiceAmount' ? valueToStore : next.invoiceAmount || '0') || 0;
+        const dep = parseFloat(name === 'depositPaid' ? valueToStore : next.depositPaid || '0') || 0;
         next.financeAmount = Math.max(inv - dep, 0).toFixed(2);
       }
       return next;
     });
     // repayment recalculation is handled by useEffect on financeAmount/term/repaymentIndustry
-    if (name === "abnNumber" && digitsOnly(value).length === 11) {
+    if (name === "abnNumber" && digitsOnly(valueToStore).length === 11) {
       if (abnDebounceRef.current) window.clearTimeout(abnDebounceRef.current);
-      abnDebounceRef.current = window.setTimeout(() => handleAbnLookup(value), 300) as any;
+      abnDebounceRef.current = window.setTimeout(() => handleAbnLookup(valueToStore), 300) as any;
+    }
+    if (name === "vendorId") {
+      setVendorPrefillLocked(false);
+      setVendorPrefillError(null);
+      scheduleVendorLookup(valueToStore);
     }
   };
 
@@ -290,9 +472,14 @@ const [equipmentItems, setEquipmentItems] = useState([
   const handleFileChange = (key: string, file: File | null, docType?: string) => {
     setFiles((prev: any) => {
       if (key === "supportingDocs" && file) {
-        return { ...prev, supportingDocs: [...prev.supportingDocs, { file, type: docType, name: file.name }] };
+        const docs = Array.isArray(prev.supportingDocs) ? prev.supportingDocs : [];
+        if (docs.length >= 4) return prev;
+        return {
+          ...prev,
+          supportingDocs: [...docs, { file, type: docType, name: file.name }],
+        };
       }
-      return { ...prev, [key]: file };
+      return { ...prev };
     });
   };
 
@@ -318,6 +505,33 @@ const [equipmentItems, setEquipmentItems] = useState([
     setEquipmentItems((prev) => prev.map((it, i) => (i === index ? { ...it, [field]: value } : it)));
   };
 
+  const extractAbrDateValue = (value: any): string | undefined => {
+    if (!value) return undefined;
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const resolved = extractAbrDateValue(item);
+        if (resolved) return resolved;
+      }
+      return undefined;
+    }
+    if (typeof value === "object") {
+      if ("EffectiveFrom" in value) return extractAbrDateValue((value as any).EffectiveFrom);
+      if ("c" in value) return extractAbrDateValue((value as any).c);
+      if ("$" in value) return extractAbrDateValue((value as any).$);
+    }
+    return undefined;
+  };
+
+  const formatAbrDate = (value: any): string | undefined => {
+    const raw = extractAbrDateValue(value);
+    if (!raw) return undefined;
+    const match = raw.match(/Date\((\d+)/);
+    const date = match ? new Date(Number(match[1])) : new Date(raw);
+    if (Number.isNaN(date.getTime())) return undefined;
+    return date.toLocaleDateString("en-AU");
+  };
+
   // ---------- ABN LOOKUP ----------
 const handleAbnLookup = async (rawAbn: string) => {
   const abn = rawAbn.replace(/\D/g, "");
@@ -334,6 +548,13 @@ const handleAbnLookup = async (rawAbn: string) => {
     if (start === -1 || end === -1) throw new Error("Invalid ABR response");
     const data = JSON.parse(text.substring(start, end + 1));
 
+    const gstSource =
+      data.Gst ||
+      data.GST ||
+      data.GoodsAndServicesTax ||
+      data.GoodsAndServicesTaxRegistration;
+    const gstFormatted = formatAbrDate(gstSource);
+
     setFormData((prev) => ({
       ...prev,
       abnNumber: abn,
@@ -344,9 +565,7 @@ const handleAbnLookup = async (rawAbn: string) => {
         prev.entityName,
       entityType: data.EntityType?.EntityDescription || prev.entityType,
       abnStatus: data.AbnStatus || prev.abnStatus,
-      gstFrom: data.Gst?.EffectiveFrom
-        ? new Date(data.Gst.EffectiveFrom).toLocaleDateString("en-AU")
-        : prev.gstFrom,
+      gstFrom: gstFormatted || prev.gstFrom,
     }));
     console.log("✅ ABN lookup successful", data);
   } catch (err) {
@@ -456,10 +675,9 @@ const handleAbnLookup = async (rawAbn: string) => {
 
     // Uploaded Docs summary
     const uploaded: { label: string; name?: string }[] = [];
-    if (files.driversLicenseFront) uploaded.push({ label: "Drivers Licence Front", name: files.driversLicenseFront.name });
-    if (files.driversLicenseBack) uploaded.push({ label: "Drivers Licence Back", name: files.driversLicenseBack.name });
-    if (files.medicareCard) uploaded.push({ label: "Medicare Card", name: files.medicareCard.name });
-    files.supportingDocs.forEach((d) => uploaded.push({ label: d.type || "Supporting Doc", name: d.file?.name }));
+    files.supportingDocs.forEach((d) =>
+      uploaded.push({ label: d.type || "Supporting Doc", name: d.file?.name })
+    );
     doc.text("Uploaded Documents", 14, (doc as any).lastAutoTable.finalY + 10);
     autoTable(doc, {
       startY: (doc as any).lastAutoTable.finalY + 15,
@@ -538,12 +756,6 @@ const handleAbnLookup = async (rawAbn: string) => {
         return supabase.storage.from("uploads").getPublicUrl(path).data.publicUrl;
       };
       const links: string[] = [];
-      const dlF = await uploadOne("drivers_front", files.driversLicenseFront);
-      const dlB = await uploadOne("drivers_back", files.driversLicenseBack);
-      const med = await uploadOne("medicare", files.medicareCard);
-      if (dlF) links.push(`DL Front: ${dlF}`);
-      if (dlB) links.push(`DL Back: ${dlB}`);
-      if (med) links.push(`Medicare: ${med}`);
       for (const d of files.supportingDocs) {
         const url = await uploadOne(`support_${d.type || "doc"}`, d.file);
         if (url) links.push(`${d.type || "Doc"}: ${url}`);
@@ -595,7 +807,7 @@ const handleAbnLookup = async (rawAbn: string) => {
             status: 'submitted',
             entity_name: formData.entityName || null,
             abn_number: formData.abnNumber || null,
-            vendor_id: vendorId || null,
+            vendor_id: formData.vendorId || vendorId || null,
             agent_id: agentId || null,
             vendor_name: formData.vendorName || null,
             finance_amount: formData.financeAmount || null,
@@ -649,42 +861,35 @@ const handleAbnLookup = async (rawAbn: string) => {
     const params = new URLSearchParams(window.location.search);
     const demoMode =
       params.get("demo") === "1" || import.meta.env.VITE_DEMO_NO_BACKEND === "1";
-    if (demoMode) {
-      const suffix = demoMode ? "?demo=1" : "";
-      navigate(`/contract/${createdAppId}${suffix}`);
-      return;
-    }
     setDocuSignError(null);
     setDocuSignLoading(true);
     try {
-      const baseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (!baseUrl || !anonKey) {
-        throw new Error("Supabase configuration missing.");
-      }
-      const res = await fetch(`${baseUrl}/functions/v1/create-envelope`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${anonKey}`,
-          apikey: anonKey,
-        },
-        body: JSON.stringify({ applicationId: createdAppId }),
-      });
-      if (!res.ok) {
-        throw new Error(`Failed to launch DocuSign (${res.status})`);
-      }
-      const payload = await res.json();
-      if (!payload?.url) {
-        throw new Error("DocuSign response missing recipient URL.");
-      }
-      window.location.href = payload.url;
+      const suffix = demoMode ? "?demo=1" : "";
+      navigate(`/contract/${createdAppId}${suffix}`);
     } catch (err: any) {
-      console.error("DocuSign launch failed", err);
-      setDocuSignError(err?.message || "Unable to open DocuSign. Try again.");
+      console.error("Navigation failed", err);
+      setDocuSignError(err?.message || "Unable to open contract page.");
     } finally {
       setDocuSignLoading(false);
     }
+  };
+
+  const handleBackClick = () => {
+    if (onBack) {
+      onBack();
+      return;
+    }
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    const fallback =
+      profileRole === "admin"
+        ? "/admin-dashboard"
+        : profileRole === "vendor"
+        ? "/vendor-dashboard"
+        : "/agent-dashboard";
+    navigate(fallback);
   };
 
   return (
@@ -759,7 +964,7 @@ const handleAbnLookup = async (rawAbn: string) => {
           />
         </div>
         <button
-          onClick={onBack}
+          onClick={handleBackClick}
           className="flex items-center text-[#1dad21] hover:text-green-700 mb-6"
         >
           <ArrowLeft className="w-4 h-4 mr-2" /> Back to Dashboard
@@ -802,6 +1007,10 @@ const handleAbnLookup = async (rawAbn: string) => {
             formData={formData}
             handleChange={handleChange}
             supplierAbnLoading={supplierAbnLoading}
+            vendorPrefillLoading={vendorPrefillLoading}
+            vendorPrefillError={vendorPrefillError}
+            vendorPrefillLocked={vendorPrefillLocked}
+            agentId={agentId}
           />
           <BrokerageSection
             formData={formData}
@@ -855,7 +1064,7 @@ const handleAbnLookup = async (rawAbn: string) => {
           <div className="flex justify-end gap-4 pt-4">
             <button
               type="button"
-              onClick={onBack}
+              onClick={handleBackClick}
               className="px-6 py-3 rounded-full border border-gray-300 bg-gray-50 hover:bg-gray-100"
             >
               Cancel
