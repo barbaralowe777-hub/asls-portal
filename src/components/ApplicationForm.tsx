@@ -728,6 +728,7 @@ const handleAbnLookup = async (rawAbn: string) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const isDemo = isDemoFlag;
     setLoading(true);
     const referenceNumber = `APP-${Date.now()}`;
     const total = equipmentItems.reduce(
