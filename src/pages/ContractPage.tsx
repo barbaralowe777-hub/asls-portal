@@ -75,15 +75,16 @@ const hasOutstandingTasks = (d: any) => {
 };
 
 const CM_TO_PX = 28.35;
-const BASE_Y_ADJUST = 32;
+// Temporary: zero offsets to re-baseline overlay on new A4 template
+const BASE_Y_ADJUST = 0;
 const PAGE_X_OFFSETS: Record<number, number> = {
-  0: -CM_TO_PX,
-  4: -CM_TO_PX,
-  7: -CM_TO_PX,
+  0: 0,
+  4: 0,
+  7: 0,
 };
 const PAGE_Y_EXTRA_OFFSETS: Record<number, number> = {
-  5: CM_TO_PX * 4,
-  7: -CM_TO_PX * 1.5,
+  5: 0,
+  7: 0,
 };
 const LESSEE_REPEAT_PAGES = {
   entityName: [4, 5, 7],
