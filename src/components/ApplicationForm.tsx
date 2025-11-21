@@ -26,7 +26,11 @@ const loadGoogleMapsScript = (callback: () => void) => {
     callback();
     return;
   }
-  const existingScript = document.getElementById("googleMaps");
+  const existingScript =
+    document.getElementById("googleMaps") ||
+    Array.from(document.getElementsByTagName("script")).find((s) =>
+      (s.getAttribute("src") || "").includes("maps.googleapis.com/maps/api/js")
+    );
   if (existingScript) {
     existingScript.addEventListener("load", callback);
     return;
