@@ -155,7 +155,9 @@ const RepaymentCalculator: React.FC = () => {
 
             {/* ABN age override */}
             <div className="flex flex-col text-sm text-gray-700">
-              <span className="font-medium">ABN registered less than 2 years? *</span>
+              <span className="font-medium">
+                ABN registered <span className="font-bold uppercase">LESS</span> than 2 years? *
+              </span>
               <div className="flex items-center gap-4 mt-2">
                 <label className="inline-flex items-center gap-2">
                   <input
