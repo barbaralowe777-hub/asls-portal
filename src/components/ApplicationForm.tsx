@@ -123,12 +123,8 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
     supportingDocs: [] as Array<{ file: File; type?: string; name?: string }>,
   });
 
-  const isDemoFlag = useMemo(
-    () =>
-      new URLSearchParams(window.location.search).get("demo") === "1" ||
-      import.meta.env.VITE_DEMO_NO_BACKEND === "1",
-    []
-  );
+  // Demo mode disabled for application form
+  const isDemoFlag = false;
 
   const clearVendorPrefillFields = useCallback(() => {
     setVendorPrefillLocked(false);
