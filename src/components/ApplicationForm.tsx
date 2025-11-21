@@ -240,11 +240,13 @@ const [equipmentItems, setEquipmentItems] = useState([
     abnStatus: "",
     entityType: "",
     gstFrom: "",
+    abnRegisteredFrom: "",
+    abnRegisteredDate: "",
+    abnUnder2Years: false,
     product: "",
     industryType: "",
     website: "",
     email: "",
-    dateOfIncorporation: "",
     additionalInfo: "",
     streetAddress: "",
     streetAddress2: "",
@@ -524,16 +526,25 @@ const [equipmentItems, setEquipmentItems] = useState([
     return undefined;
   };
 
-  const formatAbrDate = (value: any): string | undefined => {
-    const raw = extractAbrDateValue(value);
-    if (!raw) return undefined;
-    const match = raw.match(/Date\((\d+)/);
-    const date = match ? new Date(Number(match[1])) : new Date(raw);
-    if (Number.isNaN(date.getTime())) return undefined;
-    return date.toLocaleDateString("en-AU");
-  };
+const formatAbrDate = (value: any): string | undefined => {
+  const raw = extractAbrDateValue(value);
+  if (!raw) return undefined;
+  const match = raw.match(/Date\((\d+)/);
+  const date = match ? new Date(Number(match[1])) : new Date(raw);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toLocaleDateString("en-AU");
+};
 
-  // ---------- ABN LOOKUP ----------
+const formatAbrDateIso = (value: any): string | undefined => {
+  const raw = extractAbrDateValue(value);
+  if (!raw) return undefined;
+  const match = raw.match(/Date\((\d+)/);
+  const date = match ? new Date(Number(match[1])) : new Date(raw);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString();
+};
+
+// ---------- ABN LOOKUP ----------
 const handleAbnLookup = async (rawAbn: string) => {
   const abn = rawAbn.replace(/\D/g, "");
   if (!/^\d{11}$/.test(abn)) return;
@@ -555,6 +566,17 @@ const handleAbnLookup = async (rawAbn: string) => {
       data.GoodsAndServicesTax ||
       data.GoodsAndServicesTaxRegistration;
     const gstFormatted = formatAbrDate(gstSource);
+    const abnStartSource =
+      data.ABNStatusEffectiveFrom ||
+      data.AbnStatusEffectiveFrom ||
+      data.AbnStatusFrom ||
+      data.ABNStatusFrom ||
+      data.ABNStatus?.EffectiveFrom ||
+      data.AbnStatus?.EffectiveFrom ||
+      data.ABNStatus ||
+      data.AbnStatus;
+    const abnRegisteredFrom = formatAbrDate(abnStartSource);
+    const abnRegisteredDate = formatAbrDateIso(abnStartSource) || "";
 
     setFormData((prev) => ({
       ...prev,
@@ -567,6 +589,9 @@ const handleAbnLookup = async (rawAbn: string) => {
       entityType: data.EntityType?.EntityDescription || prev.entityType,
       abnStatus: data.AbnStatus || prev.abnStatus,
       gstFrom: gstFormatted || prev.gstFrom,
+      abnRegisteredFrom: abnRegisteredFrom || prev.abnRegisteredFrom,
+      abnRegisteredDate: abnRegisteredDate || prev.abnRegisteredDate,
+      abnUnder2Years: false,
     }));
     console.log("✅ ABN lookup successful", data);
   } catch (err) {
