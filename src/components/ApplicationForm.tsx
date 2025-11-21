@@ -836,16 +836,9 @@ const handleAbnLookup = async (rawAbn: string) => {
           {
             id: referenceNumber,
             status: 'submitted',
-            entity_name: formData.entityName || null,
-            abn_number: formData.abnNumber || null,
-            vendor_id: formData.vendorId || vendorId || null,
-            agent_id: agentId || null,
-            vendor_name: formData.vendorName || null,
-            finance_amount: formData.financeAmount || null,
-            pdf_url: pdfUrl || null,
             data: payload,
           },
-        ] as any);
+        ]);
       } catch (e) {
         console.warn('Applications insert failed (ensure applications table & RLS).', e);
       }
