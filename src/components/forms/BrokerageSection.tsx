@@ -42,10 +42,10 @@ const BrokerageSection: React.FC<BrokerageSectionProps> = ({
 
   return (
     <div className="border-b pb-8">
-      <h2 className="text-xl font-semibold mb-6 text-gray-800">SELECT BROKERAGE AND TERM</h2>
+      <h2 className="text-xl font-semibold mb-6 text-gray-800">PURCHASE PRICE AND TERMS</h2>
       <div className="grid md:grid-cols-2 gap-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Invoice Amount (Incl GST) $ *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Purchase Price (Incl GST) $ *</label>
           <input
             type="number"
             name="invoiceAmount"

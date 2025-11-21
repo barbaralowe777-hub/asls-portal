@@ -10,9 +10,10 @@ interface EquipmentDetailsSectionProps {
   updateEquipmentItem: (index: number, field: string, value: string) => void;
 }
 
-const categories = [
-  'Solar Panels', 'Inverters', 'Batteries',
-];
+const categories = ['Solar Panels', 'Inverters', 'Batteries'];
+const batteryQtyOptions = Array.from({ length: 10 }, (_, i) => (i + 1).toString());
+const inverterQtyOptions = Array.from({ length: 20 }, (_, i) => (i + 1).toString());
+const systemSizes = [250, 300, 350, 400, 450, 500];
 
 const manufacturers = [
   'LG', 'Jinko Solar', 'Trina Solar', 'Canadian Solar', 
@@ -56,69 +57,83 @@ const EquipmentDetailsSection: React.FC<EquipmentDetailsSectionProps> = ({
           
           <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Category * (Select all that apply)</label>
-              <div className="space-y-2 border border-gray-300 rounded-lg p-3 max-h-48 overflow-y-auto">
-                {categories.map(cat => (
-                  <label key={cat} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
-                    <input
-                      type="checkbox"
-                      checked={item.category?.includes(cat) || false}
-                      onChange={(e) => {
-                        const currentCategories = item.category ? item.category.split(', ') : [];
-                        if (e.target.checked) {
-                          currentCategories.push(cat);
-                        } else {
-                          const index = currentCategories.indexOf(cat);
-                          if (index > -1) currentCategories.splice(index, 1);
-                        }
-                        updateEquipmentItem(index, 'category', currentCategories.join(', '));
-                      }}
-                      className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
-                    />
-                    <span className="text-sm text-gray-700">{cat}</span>
-                  </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Category *</label>
+              <select
+                value={item.category || ''}
+                onChange={(e) => updateEquipmentItem(index, 'category', e.target.value)}
+                required
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+              >
+                <option value="">Please Select</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
                 ))}
-              </div>
+              </select>
             </div>
-            
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">System Size *</label>
-              <input
-                type="text"
-                value={item.asset}
+              <label className="block text-sm font-medium text-gray-700 mb-2">System Size (kWh) *</label>
+              <select
+                value={item.asset || ''}
                 onChange={(e) => updateEquipmentItem(index, 'asset', e.target.value)}
                 required
-                placeholder="eg Solar Panels 300kW"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-              />
+              >
+                <option value="">Please Select</option>
+                {systemSizes.map((size) => (
+                  <option key={size} value={size}>
+                    {size} kWh
+                  </option>
+                ))}
+              </select>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Quantity *</label>
-              <input
-                type="number"
-                value={item.quantity}
-                onChange={(e) => updateEquipmentItem(index, 'quantity', e.target.value)}
-                required
-                min="1"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-              />
+              {item.category === 'Batteries' && (
+                <select
+                  value={item.quantity || ''}
+                  onChange={(e) => updateEquipmentItem(index, 'quantity', e.target.value)}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="">Select Qty</option>
+                  {batteryQtyOptions.map((q) => (
+                    <option key={q} value={q}>
+                      {q}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {item.category === 'Inverters' && (
+                <select
+                  value={item.quantity || ''}
+                  onChange={(e) => updateEquipmentItem(index, 'quantity', e.target.value)}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="">Select Qty</option>
+                  {inverterQtyOptions.map((q) => (
+                    <option key={q} value={q}>
+                      {q}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {(item.category === 'Solar Panels' || !item.category) && (
+                <input
+                  type="number"
+                  value={item.quantity}
+                  onChange={(e) => updateEquipmentItem(index, 'quantity', e.target.value)}
+                  required
+                  min="1"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                />
+              )}
             </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Unit Price (Ex GST) $ *</label>
-              <input
-                type="number"
-                value={item.unitPrice}
-                onChange={(e) => updateEquipmentItem(index, 'unitPrice', e.target.value)}
-                required
-                min="0"
-                step="0.01"
-                placeholder="Enter per unit price"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Manufacturer</label>
               <select
@@ -132,7 +147,7 @@ const EquipmentDetailsSection: React.FC<EquipmentDetailsSectionProps> = ({
                 ))}
               </select>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Serial Number</label>
               <select
@@ -140,10 +155,10 @@ const EquipmentDetailsSection: React.FC<EquipmentDetailsSectionProps> = ({
                 onChange={(e) => updateEquipmentItem(index, 'serialNumber', e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 bg-gray-50"
               >
-                <option value="As per Dealer Invoice/Annexure">As per Dealer Invoice/Annexure</option>
+                <option value="As Per Invoice/PO">As Per Invoice/PO</option>
               </select>
             </div>
-            
+
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">Description/Model</label>
               <input
