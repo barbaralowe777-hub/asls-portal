@@ -45,9 +45,7 @@ const BusinessDetailsSection: React.FC<BusinessDetailsSectionProps> = ({
         </div>
 
         <div>
-          <label className="font-semibold text-gray-700">
-            Entity Name
-          </label>
+          <label className="font-semibold text-gray-700">Entity Name</label>
           <input
             type="text"
             name="entityName"
@@ -73,23 +71,21 @@ const BusinessDetailsSection: React.FC<BusinessDetailsSectionProps> = ({
           </select>
         </div>
 
-        {(formData.entityType === 'Company' || formData.entityType === 'Trust') && (
-          <div>
-            <label className="font-semibold text-gray-700">Date of Incorporation</label>
-            <input
-              type="date"
-              name="dateOfIncorporation"
-              value={formData.dateOfIncorporation || ''}
-              onChange={handleChange}
-              className="w-full border rounded-lg p-3"
-            />
-          </div>
-        )}
+        <div>
+          <label className="font-semibold text-gray-700">ABN Registered From</label>
+          <input
+            type="text"
+            name="abnRegisteredFrom"
+            value={formData.abnRegisteredFrom || ""}
+            onChange={handleChange}
+            className="w-full border rounded-lg p-3 bg-gray-100"
+            readOnly
+            placeholder="Prefilled from ABR"
+          />
+        </div>
 
         <div>
-          <label className="font-semibold text-gray-700">
-            ABN Status
-          </label>
+          <label className="font-semibold text-gray-700">ABN Status</label>
           <input
             type="text"
             name="abnStatus"
@@ -101,9 +97,7 @@ const BusinessDetailsSection: React.FC<BusinessDetailsSectionProps> = ({
         </div>
 
         <div>
-          <label className="font-semibold text-gray-700">
-            GST Registered From
-          </label>
+          <label className="font-semibold text-gray-700">GST Registered From</label>
           <input
             type="text"
             name="gstFrom"
@@ -171,21 +165,24 @@ const BusinessDetailsSection: React.FC<BusinessDetailsSectionProps> = ({
         </div>
       </div>
 
-      {/* ✅ Optional ABN Verification Summary */}
+      {/* ABN Verification Summary */}
       {formData.entityName && (
         <div className="mt-6 bg-green-50 border border-green-300 rounded-lg p-4">
           <h3 className="text-green-800 font-semibold mb-2 flex items-center">
-            ABN Verified ✅
+            ABN Verified
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-700">
             <p>
-              <strong>Entity Name:</strong> {formData.entityName || "—"}
+              <strong>Entity Name:</strong> {formData.entityName || "-"}
             </p>
             <p>
-              <strong>ABN Status:</strong> {formData.abnStatus || "—"}
+              <strong>ABN Status:</strong> {formData.abnStatus || "-"}
             </p>
             <p>
-              <strong>Entity Type:</strong> {formData.entityType || "—"}
+              <strong>Entity Type:</strong> {formData.entityType || "-"}
+            </p>
+            <p>
+              <strong>ABN Registered From:</strong> {formData.abnRegisteredFrom || "-"}
             </p>
             <p>
               <strong>GST Registered From:</strong>{" "}
@@ -199,4 +196,3 @@ const BusinessDetailsSection: React.FC<BusinessDetailsSectionProps> = ({
 };
 
 export default BusinessDetailsSection;
-
