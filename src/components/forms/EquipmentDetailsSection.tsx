@@ -91,7 +91,9 @@ const EquipmentDetailsSection: React.FC<EquipmentDetailsSectionProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Quantity *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Total Quantity (all units) *
+              </label>
               {item.category === 'Batteries' && (
                 <select
                   value={item.quantity || ''}
@@ -139,6 +141,7 @@ const EquipmentDetailsSection: React.FC<EquipmentDetailsSectionProps> = ({
               <select
                 value={item.manufacturer}
                 onChange={(e) => updateEquipmentItem(index, 'manufacturer', e.target.value)}
+                required
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
               >
                 <option value="">Please Select</option>
@@ -146,6 +149,16 @@ const EquipmentDetailsSection: React.FC<EquipmentDetailsSectionProps> = ({
                   <option key={mfg} value={mfg}>{mfg}</option>
                 ))}
               </select>
+              {item.manufacturer === 'Other' && (
+                <input
+                  type="text"
+                  value={item.otherManufacturer || ''}
+                  onChange={(e) => updateEquipmentItem(index, 'otherManufacturer', e.target.value)}
+                  placeholder="Enter brand"
+                  className="mt-2 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                  required
+                />
+              )}
             </div>
 
             <div>
@@ -165,7 +178,7 @@ const EquipmentDetailsSection: React.FC<EquipmentDetailsSectionProps> = ({
                 type="text"
                 value={item.description}
                 onChange={(e) => updateEquipmentItem(index, 'description', e.target.value)}
-                placeholder="Additional details about the equipment"
+                placeholder="Additional details about the equipment (optional)"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
               />
             </div>
