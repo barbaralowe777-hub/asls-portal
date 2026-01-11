@@ -1,0 +1,12 @@
+          )}
+
+          {activeTab === 'tasks' && (
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold mb-4">Outstanding Tasks</h3>
+              {filteredApps.flatMap(a => computeTasks(a).map(task => ({ id: a.id, task }))).length === 0 ? (
+                <p className="text-gray-500">No outstanding tasks 🎉</p>
+              ) : (
+                <ul className="list-disc pl-6 space-y-2">
+                  {filteredApps.flatMap(a => computeTasks(a).map(task => ({ id: a.id, task }))).map((t, i) => (
+                    <li key={i} className="text-sm"><span className="font-mono font-semibold mr-2">{t.id}</span>{t.task}</li>
+                  ))}

@@ -16,10 +16,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Calculator, DollarSign, Calendar, Building2 } from "lucide-react";
+import { Calculator, DollarSign, Calendar } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-const RepaymentCalculator: React.FC = () => {
+type RepaymentCalculatorProps = {
+  variant?: "standalone" | "embedded";
+};
+
+const RepaymentCalculator: React.FC<RepaymentCalculatorProps> = ({
+  variant = "standalone",
+}) => {
   const [loanAmount, setLoanAmount] = useState<string>("");
   const [loanTerm, setLoanTerm] = useState<string>("60");
   const [industry, setIndustry] = useState<string>("General");
@@ -27,15 +33,57 @@ const RepaymentCalculator: React.FC = () => {
   const [monthlyRepayment, setMonthlyRepayment] = useState<number | null>(null);
   const [weeklyRepayment, setWeeklyRepayment] = useState<number | null>(null);
 
-  const DOC_FEE = 385;
-  const UPLIFT_INDUSTRIES = ["Beauty", "Gym", "Hospitality"];
+  const BROKERAGE_MARGIN = 0.055; // 5.5% brokerage uplift
+  const UPLIFT_INDUSTRIES = ["Beauty", "Gym", "Hospitality"]; // +1% uplift
 
-  // Tiered base rates (GST inclusive)
-  const getBaseRate = (amount: number): number => {
-    if (amount <= 20000) return 11.9;
-    if (amount <= 35000) return 10.9;
-    if (amount <= 50000) return 9.9;
-    return 9.5;
+  // Factor rate table (per $100, monthly) by amount band and term
+  const FACTOR_TABLE: Record<
+    number,
+    Array<{ min: number; max: number; factor: number }>
+  > = {
+    84: [
+      { min: 0, max: 20000, factor: 1.743 },
+      { min: 20000.01, max: 35000, factor: 1.692 },
+      { min: 35000.01, max: 50000, factor: 1.641 },
+      { min: 50000.01, max: 1000000, factor: 1.622 },
+    ],
+    72: [
+      { min: 0, max: 20000, factor: 1.931 },
+      { min: 20000.01, max: 35000, factor: 1.881 },
+      { min: 35000.01, max: 50000, factor: 1.832 },
+      { min: 50000.01, max: 1000000, factor: 1.813 },
+    ],
+    60: [
+      { min: 0, max: 20000, factor: 2.195 },
+      { min: 20000.01, max: 35000, factor: 2.15 },
+      { min: 35000.01, max: 50000, factor: 2.102 },
+      { min: 50000.01, max: 1000000, factor: 2.084 },
+    ],
+    48: [
+      { min: 0, max: 20000, factor: 2.603 },
+      { min: 20000.01, max: 35000, factor: 2.556 },
+      { min: 35000.01, max: 50000, factor: 2.511 },
+      { min: 50000.01, max: 1000000, factor: 2.493 },
+    ],
+    36: [
+      { min: 0, max: 20000, factor: 3.284 },
+      { min: 20000.01, max: 35000, factor: 3.24 },
+      { min: 35000.01, max: 50000, factor: 3.196 },
+      { min: 50000.01, max: 1000000, factor: 3.178 },
+    ],
+    24: [
+      { min: 0, max: 20000, factor: 4.657 },
+      { min: 20000.01, max: 35000, factor: 4.614 },
+      { min: 35000.01, max: 50000, factor: 4.572 },
+      { min: 50000.01, max: 1000000, factor: 4.555 },
+    ],
+  };
+
+  const getFactor = (amount: number, months: number): number | null => {
+    const rows = FACTOR_TABLE[months];
+    if (!rows) return null;
+    const tier = rows.find((row) => amount >= row.min && amount <= row.max);
+    return tier ? tier.factor : null;
   };
 
   const calculateRepayment = () => {
@@ -48,18 +96,20 @@ const RepaymentCalculator: React.FC = () => {
       alert("Please confirm if the ABN has been registered for less than 2 years.");
       return;
     }
-
-    let rate = getBaseRate(amount);
-    if (UPLIFT_INDUSTRIES.includes(industry)) rate += 1; // +1% uplift
-    if (underTwoYears) rate += 1; // uplift for ABN < 2 years
-
     const months = parseInt(loanTerm);
-    const monthlyRate = rate / 100 / 12;
+    const factor = getFactor(amount, months);
+    if (!factor) {
+      alert("No rate available for that amount/term. Please choose a supported term between 24–84 months.");
+      return;
+    }
 
-    // Standard amortised repayment formula
-    const monthly =
-      (amount * monthlyRate * Math.pow(1 + monthlyRate, months)) /
-      (Math.pow(1 + monthlyRate, months) - 1);
+    // Factor-based repayment: (factor% of NAV) with brokerage uplift
+    const upliftMultiplier =
+      1 +
+      (UPLIFT_INDUSTRIES.includes(industry) ? 0.01 : 0) +
+      (underTwoYears ? 0.01 : 0);
+    const adjustedFactor = factor * upliftMultiplier;
+    const monthly = (adjustedFactor / 100) * amount * (1 + BROKERAGE_MARGIN);
 
     const weekly = (monthly * 12) / 52;
 
@@ -79,18 +129,29 @@ const RepaymentCalculator: React.FC = () => {
   const currency = (n: number) =>
     n.toLocaleString("en-AU", { style: "currency", currency: "AUD" });
 
+  const isEmbedded = variant === "embedded";
+  const outerClasses = isEmbedded
+    ? "bg-gradient-to-br from-white to-emerald-50 rounded-2xl p-4 sm:p-6"
+    : "min-h-screen bg-gray-50 py-10 px-4";
+  const innerClasses = isEmbedded
+    ? "max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6"
+    : "max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8";
+  const cardClasses = isEmbedded
+    ? "bg-white shadow-sm border border-gray-100"
+    : "bg-white shadow-md border border-gray-100";
+
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+    <div className={outerClasses}>
+      <div className={innerClasses}>
         {/* Left: Input Section */}
-        <Card className="bg-white shadow-md border border-gray-100">
+        <Card className={cardClasses}>
           <CardHeader className="border-b pb-3">
             <CardTitle className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
               <Calculator className="h-6 w-6 text-blue-600" />
               Equipment Finance Calculator
             </CardTitle>
             <CardDescription className="text-base text-gray-600">
-              Enter your details below to estimate repayments.
+              Factor-based estimate using ASLS rate card.
             </CardDescription>
           </CardHeader>
 
@@ -121,7 +182,7 @@ const RepaymentCalculator: React.FC = () => {
                   <SelectValue placeholder="Select term" />
                 </SelectTrigger>
                 <SelectContent>
-                  {[12, 24, 36, 48, 60, 72, 84].map((term) => (
+                  {[24, 36, 48, 60, 72, 84].map((term) => (
                     <SelectItem key={term} value={term.toString()}>
                       {term} months
                     </SelectItem>
@@ -133,7 +194,6 @@ const RepaymentCalculator: React.FC = () => {
             {/* Industry */}
             <div>
               <Label className="text-lg font-medium text-gray-700 mb-1 flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
                 Industry
               </Label>
               <Select value={industry} onValueChange={setIndustry}>
@@ -184,6 +244,7 @@ const RepaymentCalculator: React.FC = () => {
               </div>
             </div>
 
+            {/* Industry */}
             {/* Buttons */}
             <div className="flex items-center gap-3 pt-2">
               <Button

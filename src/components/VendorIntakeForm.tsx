@@ -44,12 +44,16 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack }) => {
   // -------------------- FORM STATE --------------------
   const [formData, setFormData] = useState<any>({
     abnNumber: "",
+    abnStatus: "",
+    abnRegisteredFrom: "",
+    abnRegisteredDate: "",
     businessName: "",
     entityType: "",
     dateOfAbnRegistration: "",
     gstFrom: "",
     dateOfIncorporation: "",
     businessAddress: "",
+    contactName: "",
     phone: "",
     mobile: "",
     email: "",
@@ -67,8 +71,12 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack }) => {
         licenceNumber: "",
         licenceState: "",
         licenceExpiry: "",
+        medicareNumber: "",
+        medicareExpiry: "",
         licenceFrontUrl: "",
         licencePhotoUrl: "",
+        medicareFrontUrl: "",
+        medicareBackUrl: "",
       },
       {
         index: 2,
@@ -82,8 +90,12 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack }) => {
         licenceNumber: "",
         licenceState: "",
         licenceExpiry: "",
+        medicareNumber: "",
+        medicareExpiry: "",
         licenceFrontUrl: "",
         licencePhotoUrl: "",
+        medicareFrontUrl: "",
+        medicareBackUrl: "",
       },
     ],
     certificateFiles: "",
@@ -96,8 +108,11 @@ const VendorIntakeForm: React.FC<Props> = ({ onBack }) => {
     signatureName: "",
     signatureDate: "",
     solarPanels: [] as string[],
+    solarPanelsOther: "",
     inverters: [] as string[],
+    invertersOther: "",
     batteries: [] as string[],
+    batteriesOther: "",
     installerCertifications: [] as string[],
   });
 
@@ -215,9 +230,16 @@ useEffect(() => {
       if (start === -1 || end === -1) throw new Error("Invalid ABR response");
       const data = JSON.parse(text.substring(start, end + 1));
 
+      const abnStatusValue = data.ABNStatus || data.AbnStatus;
+      const abnStartSource =
+        data.ABNStatusEffectiveFrom || data.AbnStatusEffectiveFrom || abnStatusValue;
+
       setFormData((prev: any) => ({
         ...prev,
         abnNumber: abn,
+        abnStatus: typeof abnStatusValue === "string" ? abnStatusValue : prev.abnStatus,
+        abnRegisteredFrom: formatAbrDate(abnStartSource) || prev.abnRegisteredFrom,
+        abnRegisteredDate: formatAbrDate(abnStartSource) || prev.abnRegisteredDate,
         businessName:
           data.EntityName ||
           data.MainName?.OrganisationName ||
@@ -256,9 +278,24 @@ useEffect(() => {
   };
 
   const handleDirectorChange = (index: number, field: string, value: string) => {
+    const sanitizeLicence = (val: string) =>
+      val.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 14);
+    const normalizeDate = (val: string) => formatDate(val);
+    let nextValue = value;
+    if (field === "licenceNumber") {
+      nextValue = sanitizeLicence(value);
+    }
+    if (field === "dob" || field === "licenceExpiry") {
+      nextValue = normalizeDate(value);
+    }
+    if (field === "medicareExpiry") {
+      const cleaned = value.replace(/\D/g, "").slice(0, 6);
+      if (cleaned.length >= 3) nextValue = `${cleaned.slice(0, 2)}/${cleaned.slice(2)}`;
+      else nextValue = cleaned;
+    }
     setFormData((prev: any) => {
       const directors = [...prev.directors];
-      directors[index - 1][field] = value;
+      directors[index - 1][field] = nextValue;
       return { ...prev, directors };
     });
   };
@@ -348,14 +385,19 @@ useEffect(() => {
       }
 
       const resumeLink = `${window.location.origin}/vendor-intake?id=${draft}`;
+      if (!formData.email) {
+        alert("✅ Progress saved! Add an email to receive a resume link.");
+        return;
+      }
       const emailPayload = {
         to: [formData.email],
-        subject: "Your Saved Vendor Application – Resume Anytime",
+        subject: "Your Saved Vendor Application - Resume Anytime",
+        text: `Resume your application here: ${resumeLink}`,
         html: `
           <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333">
             <h2>Your Saved Vendor Application</h2>
             <p>Dear ${formData.businessName || "Vendor"},</p>
-            <p>You’ve saved your Vendor Accreditation Application for later.</p>
+            <p>You've saved your Vendor Accreditation Application for later.</p>
             <p>Click below to resume:</p>
             <p><a href="${resumeLink}" style="background:#0ac432;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">Resume Application</a></p>
             <p>Kind regards,<br><strong>Australian Solar Lending Solutions</strong></p>
@@ -375,7 +417,7 @@ useEffect(() => {
         }
       );
 
-      if (!res.ok) throw new Error("Email failed to send");
+      if (!res.ok) console.warn("Save-for-later email may not have been sent");
       alert(`✅ Progress saved! Check your email for the resume link.`);
     } catch (err) {
       console.error("❌ Save failed", err);
@@ -480,15 +522,19 @@ useEffect(() => {
     });
 
     // Solar Equipment
-    const listToString = (list: string[]) => (list?.length ? list.join(", ") : "None");
+    const listToString = (list: string[], other?: string) => {
+      const combined = [...(list || [])];
+      if (other) combined.push(other);
+      return combined.length ? combined.join(", ") : "None";
+    };
     doc.setFontSize(14);
     doc.text("Solar Equipment", 14, (doc as any).lastAutoTable.finalY + 10);
     autoTable(doc, {
       startY: (doc as any).lastAutoTable.finalY + 15,
       body: [
-        ["Panels", listToString(formData.solarPanels)],
-        ["Inverters", listToString(formData.inverters)],
-        ["Batteries", listToString(formData.batteries)],
+        ["Panels", listToString(formData.solarPanels, formData.solarPanelsOther)],
+        ["Inverters", listToString(formData.inverters, formData.invertersOther)],
+        ["Batteries", listToString(formData.batteries, formData.batteriesOther)],
       ],
       styles: { fontSize: 10 },
     });
@@ -620,7 +666,9 @@ useEffect(() => {
       .limit(1);
     if (error) throw error;
     const last = data?.[0]?.vendor_code;
-    const nextNumber = last ? parseInt(last.replace(/\D/g, ""), 10) + 1 : 1;
+    // Start vendor codes at V00101 and increment
+    const lastNumber = last ? parseInt(last.replace(/\D/g, ""), 10) : 0;
+    const nextNumber = lastNumber ? lastNumber + 1 : 101;
     return `V${String(nextNumber).padStart(5, "0")}`;
   };
 
@@ -637,23 +685,41 @@ useEffect(() => {
       existingVendor = data;
     }
 
+    const contactName =
+      formData.contactName ||
+      formData.signatureName ||
+      formData.businessName ||
+      formData.email ||
+      existingVendor?.contact_name ||
+      "";
+    const contactEmail = formData.email || existingVendor?.contact_email || "";
+    const vendorAddress = formData.businessAddress || existingVendor?.vendor_address || "";
+    const vendorPhone = formData.phone || formData.mobile || existingVendor?.vendor_phone || "";
+
     const metadata = {
       phone: formData.phone || "",
       mobile: formData.mobile || "",
       website: formData.website || "",
       address: formData.businessAddress || "",
+      contact_name: contactName,
+      contact_email: contactEmail,
+      abn_status: formData.abnStatus || "",
+      abn_active_from: formData.abnRegisteredFrom || formData.abnRegisteredDate || "",
       address_components: splitAustralianAddress(formData.businessAddress),
       pdf_url: pdfUrl,
       last_submitted_at: new Date().toISOString(),
     };
 
     const basePayload: any = {
-      name: formData.businessName || "",
+      name: formData.businessName || existingVendor?.name || "",
       abn,
-      contact_name: formData.contactName || "",
-      contact_email: formData.email || "",
+      contact_name: contactName,
+      contact_email: contactEmail,
+      vendor_address: vendorAddress,
+      vendor_phone: vendorPhone,
       status: "pending",
       metadata,
+      agreement_url: pdfUrl,
     };
 
     if (existingVendor) {
@@ -684,6 +750,7 @@ useEffect(() => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    let vendorInviteError: string | null = null;
 
     try {
       // 1️⃣ Generate & Upload PDF
@@ -705,6 +772,27 @@ useEffect(() => {
 
       const vendorRecord = await upsertVendorRecord(pdfUrl);
       const vendorCode = vendorRecord?.vendor_code;
+      const contactName =
+        formData.contactName ||
+        formData.signatureName ||
+        formData.businessName ||
+        formData.email;
+
+      // Invite the vendor contact to the portal (non-blocking)
+      try {
+        await supabase.functions.invoke("vendor-invite", {
+          body: {
+            vendor_id: vendorRecord.id,
+            email: formData.email,
+            name: contactName,
+            vendor_code: vendorCode,
+          },
+        });
+      } catch (inviteErr: any) {
+        console.error("Vendor invite failed", inviteErr);
+        vendorInviteError = inviteErr?.message || "Vendor invite failed";
+        // don't block submission
+      }
 
       // 2️⃣ Licence URLs
       const licenceSections: string[] = [];
@@ -764,17 +852,34 @@ Please log in to the ASLS Vendor Portal for full details.
       const adminEmailPayload = {
         to: ["john@asls.net.au", "admin@asls.net.au"],
         subject: `ASLS Vendor Intake - ${formData.businessName || "New submission"}`,
-        text: `PDF: ${pdfUrl}\n\n${JSON.stringify(formData, null, 2)}`,
+        text: `PDF summary: ${pdfUrl}`,
         html: `
-          <h2>New Vendor Intake Submission</h2>
-          <p><strong>Business Name:</strong> ${formData.businessName || "N/A"}</p>
-          <p><strong>ABN:</strong> ${formData.abnNumber || "N/A"}</p>
-          <p><strong>Vendor ID:</strong> ${vendorCode || "Pending"}</p>
-          <p><strong>Entity Type:</strong> ${formData.entityType || "N/A"}</p>
-          <p><strong>Signed By:</strong> ${formData.signatureName || "N/A"} on ${formData.signatureDate || "N/A"}</p>
-          <p><strong>PDF Link:</strong> <a href="${pdfUrl}" target="_blank">${pdfUrl}</a></p>
-          ${licenceSections.length ? `<h3>Licence Images</h3>${licenceSections.join("<br><br>")}` : ""}
-          ${docs.length ? `<h3>Supporting Documents</h3><p>${docs.join("<br>")}</p>` : ""}
+          <div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937;background:#f8fafc;padding:20px;">
+            <div style="max-width:680px;margin:auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.06);overflow:hidden;">
+              <div style="background:#0ac432;padding:16px 20px;text-align:center;">
+                <img src="https://portal.asls.net.au/ASLS-logo.png" alt="ASLS" style="max-height:52px" />
+              </div>
+              <div style="padding:22px;">
+                <h2 style="margin:0 0 10px;font-size:20px;color:#111827;">New Vendor Intake Submission</h2>
+                <p style="margin:0 0 6px;">Business: <strong>${formData.businessName || "N/A"}</strong></p>
+                <p style="margin:0 0 6px;">ABN: <strong>${formData.abnNumber || "N/A"}</strong></p>
+                <p style="margin:0 0 6px;">Vendor ID: <strong>${vendorCode || "Pending"}</strong></p>
+                <p style="margin:0 0 6px;">Entity Type: <strong>${formData.entityType || "N/A"}</strong></p>
+                <p style="margin:0 0 6px;">Signed By: <strong>${formData.signatureName || "N/A"}</strong> on ${formData.signatureDate || "N/A"}</p>
+                <p style="margin:12px 0;"><a href="${pdfUrl}" style="background:#0ac432;color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none;font-weight:700;display:inline-block;">View Branded PDF Summary</a></p>
+                ${
+                  licenceSections.length
+                    ? `<div style="margin-top:10px;"><div style="font-weight:600;margin-bottom:4px;">Licence Images:</div>${licenceSections.join("<br><br>")}</div>`
+                    : ""
+                }
+                ${
+                  docs.length
+                    ? `<div style="margin-top:10px;"><div style="font-weight:600;margin-bottom:4px;">Supporting Documents:</div><p style="margin:0;">${docs.join("<br>")}</p></div>`
+                    : ""
+                }
+              </div>
+            </div>
+          </div>
         `,
       };
 
@@ -795,7 +900,7 @@ Please log in to the ASLS Vendor Portal for full details.
       // 5️⃣ Vendor Confirmation Email (Cleaned + Styled)
       const vendorEmailPayload = {
         to: [formData.email],
-        subject: "Thank You for Submitting Your Vendor Accreditation Application",
+        subject: "Access the ASLS Vendor Portal",
         text: `
 Dear ${formData.businessName},
 
@@ -803,9 +908,9 @@ Thank you for submitting your Vendor Accreditation Application with Australian S
 
 Your provisional ASLS Vendor ID is ${vendorCode || "pending allocation"}. Keep this handy for future correspondence and when submitting applications.
 
-Your application is now under review. Our Client Services team will contact you within 24 hours on the number provided to guide you through the next steps.
+You can log in to the ASLS Vendor Portal now and lodge up to 3 applications while full accreditation is being finalised. Use the invitation email (magic link) you receive, or go to https://portal.asls.net.au/reset-password and set your password with this email address.
 
-Once accredited, you will receive an email inviting you to access our Vendor Portal to submit finance applications and monitor their progress.
+Our Client Services team will contact you within 24 hours to guide you through the next steps.
 
 We appreciate your partnership and look forward to working with you.
 
@@ -829,8 +934,12 @@ Australian Solar Lending Solutions
 
       <p>Your provisional ASLS Vendor ID is <strong>${vendorCode || "Pending"}</strong>. Please quote this number whenever you contact us.</p>
 
-      <p>Your application is now under review. Our Client Services team will be in touch within 
-      <strong>24 hours</strong> on the number provided to guide you through the next steps.</p>
+      <p>You can <strong>log in to the Vendor Portal now</strong>. Use the invitation email (magic link) you receive, or visit 
+        <a href="https://portal.asls.net.au/reset-password" target="_blank" style="color:#00796b; text-decoration:none; font-weight:bold;">https://portal.asls.net.au/reset-password</a> 
+        and set your password with this email address.</p>
+
+      <p>While full accreditation is being finalised, you may lodge up to <strong>3 applications</strong>. Our Client Services team will be in touch within 
+      <strong>24 hours</strong> to guide you through next steps.</p>
 
       <p>Once accredited, you will receive an invitation to access our Vendor Portal to submit and track your finance applications.</p>
 
@@ -871,7 +980,10 @@ Australian Solar Lending Solutions
 
       if (!vendorRes.ok) throw new Error("Vendor confirmation email failed to send");
 
-      alert(`Submission sent successfully! Your Vendor ID is ${vendorCode || "pending allocation"}.`);
+      const successMsg = vendorInviteError
+        ? `Submission sent successfully! Your Vendor ID is ${vendorCode || "pending allocation"}. Portal invite may not have been sent: ${vendorInviteError}`
+        : `Submission sent successfully! Your Vendor ID is ${vendorCode || "pending allocation"}.`;
+      alert(successMsg);
     } catch (error: any) {
       console.error("Submission Error:", error);
       alert(`Submission Error: ${error.message}`);
@@ -938,7 +1050,7 @@ Australian Solar Lending Solutions
 
           {(formData.entityType === "Company" || formData.entityType === "Trust") && (
             <div>
-              <label className="font-semibold text-gray-700">Date of Incorporation*</label>
+              <label className="font-semibold text-gray-700">Date of Incorporation</label>
               <input
                 type="text"
                 placeholder="DD/MM/YYYY"
@@ -946,10 +1058,28 @@ Australian Solar Lending Solutions
                 value={formData.dateOfIncorporation}
                 onChange={handleDateChange}
                 className="w-full border rounded-lg p-3"
-                required
               />
             </div>
           )}
+
+            <div>
+              <label className="font-semibold text-gray-700">ABN Status</label>
+              <input
+                type="text"
+                value={formData.abnStatus || ""}
+                readOnly
+                className="w-full border rounded-lg p-3 bg-gray-100"
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-gray-700">ABN Active From</label>
+              <input
+                type="text"
+                value={formData.abnRegisteredFrom || formData.abnRegisteredDate || ""}
+                readOnly
+                className="w-full border rounded-lg p-3 bg-gray-100"
+              />
+            </div>
             
           </div>
 
@@ -995,6 +1125,17 @@ Australian Solar Lending Solutions
 
           {/* Contact Info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
+            <div>
+              <label className="font-semibold text-gray-700">Primary Contact Name*</label>
+              <input
+                type="text"
+                name="contactName"
+                value={formData.contactName}
+                onChange={handleChange}
+                className="w-full border rounded-lg p-3"
+                required
+              />
+            </div>
             <div>
               <label className="font-semibold text-gray-700">Phone Number*</label>
               <input
@@ -1154,6 +1295,20 @@ Australian Solar Lending Solutions
                   className="border-gray-300 rounded-lg p-3 shadow-sm"
                   required
                 />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 col-span-2">
+                  <input
+                    placeholder="Medicare Number"
+                    value={d.medicareNumber || ""}
+                    onChange={(e) => handleDirectorChange(d.index, "medicareNumber", e.target.value)}
+                    className="border-gray-300 rounded-lg p-3 shadow-sm"
+                  />
+                  <input
+                    placeholder="Medicare Expiry (MM/YYYY)"
+                    value={d.medicareExpiry || ""}
+                    onChange={(e) => handleDirectorChange(d.index, "medicareExpiry", e.target.value)}
+                    className="border-gray-300 rounded-lg p-3 shadow-sm"
+                  />
+                </div>
               </div>
 
               {/* Licence Uploads */}
@@ -1177,6 +1332,24 @@ Australian Solar Lending Solutions
                   required
                 />
                 {d.licencePhotoUrl && <p className="text-xs text-green-600 mt-1">✅ Uploaded successfully</p>}
+
+                <label className="block font-semibold text-gray-700 mt-6 mb-1">Medicare Card (Front)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleDirectorFileUpload(e, d.index, "medicareFront")}
+                  className="w-full border-gray-300 rounded-lg p-2"
+                />
+                {d.medicareFrontUrl && <p className="text-xs text-green-600 mt-1">✅ Uploaded successfully</p>}
+
+                <label className="block font-semibold text-gray-700 mt-4 mb-1">Medicare Card (Back)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleDirectorFileUpload(e, d.index, "medicareBack")}
+                  className="w-full border-gray-300 rounded-lg p-2"
+                />
+                {d.medicareBackUrl && <p className="text-xs text-green-600 mt-1">✅ Uploaded successfully</p>}
               </div>
             </div>
           ))}
@@ -1256,6 +1429,17 @@ Australian Solar Lending Solutions
           </label>
         </div>
       ))}
+      {formData.solarPanels.includes("Other") && (
+        <input
+          type="text"
+          placeholder="Specify other panel brand"
+          value={formData.solarPanelsOther}
+          onChange={(e) =>
+            setFormData((prev: any) => ({ ...prev, solarPanelsOther: e.target.value }))
+          }
+          className="mt-2 w-full border rounded-lg p-2"
+        />
+      )}
     </div>
 
     {/* Inverters */}
@@ -1283,6 +1467,17 @@ Australian Solar Lending Solutions
           </label>
         </div>
       ))}
+      {formData.inverters.includes("Other") && (
+        <input
+          type="text"
+          placeholder="Specify other inverter brand"
+          value={formData.invertersOther}
+          onChange={(e) =>
+            setFormData((prev: any) => ({ ...prev, invertersOther: e.target.value }))
+          }
+          className="mt-2 w-full border rounded-lg p-2"
+        />
+      )}
     </div>
 
     {/* Batteries */}
@@ -1309,6 +1504,17 @@ Australian Solar Lending Solutions
           </label>
         </div>
       ))}
+      {formData.batteries.includes("Other") && (
+        <input
+          type="text"
+          placeholder="Specify other battery brand"
+          value={formData.batteriesOther}
+          onChange={(e) =>
+            setFormData((prev: any) => ({ ...prev, batteriesOther: e.target.value }))
+          }
+          className="mt-2 w-full border rounded-lg p-2"
+        />
+      )}
     </div>
   </div>
 </div>

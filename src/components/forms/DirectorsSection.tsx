@@ -101,8 +101,14 @@ const DirectorsSection: React.FC<DirectorsSectionProps> = ({
     field: keyof DirectorInfo,
     value: string
   ) => {
+    const sanitizeLicence = (val: string) =>
+      (val || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 14);
     setDirectors((prev) =>
-      prev.map((d, i) => (i === index ? { ...d, [field]: value } : d))
+      prev.map((d, i) =>
+        i === index
+          ? { ...d, [field]: field === "licenceNumber" ? sanitizeLicence(value) : value }
+          : d
+      )
     );
   };
 

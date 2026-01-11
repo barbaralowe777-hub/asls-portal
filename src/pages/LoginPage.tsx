@@ -12,10 +12,10 @@ const LoginPage: React.FC = () => {
         else if (role === 'agent') navigate('/agent-dashboard');
         else navigate('/vendor-dashboard');
       }}
-      onSwitchToSignup={() => navigate('/vendor-intake')}
+      onSwitchToSignup={() => navigate('/agent-signup')}
+      onForgotPassword={() => navigate('/reset-password')}
     />
   );
 };
 
 export default LoginPage;
-

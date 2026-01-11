@@ -24,11 +24,16 @@ const numericValue = (value?: number | string | null) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const formatAddress = (parts: Array<string | null | undefined>) =>
-  parts
+const formatAddress = (parts: Array<string | null | undefined>) => {
+  const cleaned = parts
     .map((part) => (typeof part === "string" ? part.trim() : ""))
-    .filter(Boolean)
-    .join(", ");
+    .filter(Boolean);
+  // If the first element already looks like a full address with a postcode, return it to avoid duplication.
+  if (cleaned.length && /\b\d{4}\b/.test(cleaned[0])) {
+    return cleaned[0];
+  }
+  return cleaned.join(", ");
+};
 
 const getBaseRate = (amount: number) => {
   if (amount <= 20000) return 11.9;
@@ -75,23 +80,25 @@ const hasOutstandingTasks = (d: any) => {
 };
 
 const CM_TO_PX = 28.35;
-// Temporary: zero offsets to re-baseline overlay on new A4 template
-const BASE_Y_ADJUST = 0;
+// Global offsets: modest left/up nudge (approx 1.5cm up, 1.5cm left)
+// Positive Y lifts content; negative X nudges left.
+const BASE_Y_ADJUST = 43; // ~1.5cm upward
+const BASE_X_ADJUST = -43; // ~1.5cm left
 const PAGE_X_OFFSETS: Record<number, number> = {
   0: 0,
   4: 0,
   7: 0,
 };
 const PAGE_Y_EXTRA_OFFSETS: Record<number, number> = {
-  5: 0,
-  7: 0,
+  5: 0, // neutralize extra shift on Direct Debit page to avoid overlap
+  7: 0, // neutralize extra shift on equipment schedule page
 };
 const LESSEE_REPEAT_PAGES = {
-  entityName: [4, 5, 7],
-  installationAddress: [4, 5, 7],
-  phone: [7],
-  email: [4],
-  abn: [4, 5, 7],
+  entityName: [],
+  installationAddress: [],
+  phone: [],
+  email: [],
+  abn: [],
 };
 type FieldOverride = { page?: number; xShift?: number; yShift?: number };
 const DIRECTOR_BASE_Y_SHIFT = CM_TO_PX * 5;
@@ -118,6 +125,24 @@ const ContractPage: React.FC = () => {
     () => new URLSearchParams(window.location.search).get("overlay") === "1",
     []
   );
+  const overlayNudges = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const parse = (key: string) => {
+      const val = params.get(key);
+      if (val === null) return 0;
+      const num = Number(val);
+      return Number.isFinite(num) ? num : 0;
+    };
+    const allX = parse("ox");
+    const allY = parse("oy");
+    const perPage: Record<number, { x: number; y: number }> = {};
+    for (let i = 1; i <= 12; i += 1) {
+      const x = parse(`ox${i}`);
+      const y = parse(`oy${i}`);
+      if (x || y) perPage[i - 1] = { x, y };
+    }
+    return { allX, allY, perPage };
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -200,8 +225,8 @@ const ContractPage: React.FC = () => {
   }, []);
 
   const getPageOffsets = (page: number) => ({
-    x: PAGE_X_OFFSETS[page] ?? 0,
-    y: BASE_Y_ADJUST + (PAGE_Y_EXTRA_OFFSETS[page] ?? 0),
+    x: BASE_X_ADJUST + overlayNudges.allX + (overlayNudges.perPage[page]?.x ?? 0) + (PAGE_X_OFFSETS[page] ?? 0),
+    y: BASE_Y_ADJUST + overlayNudges.allY + (overlayNudges.perPage[page]?.y ?? 0) + (PAGE_Y_EXTRA_OFFSETS[page] ?? 0),
   });
 
   const buildFilledPdf = useCallback(
@@ -234,6 +259,7 @@ const ContractPage: React.FC = () => {
           specialConditions: string;
         };
         directors: Array<{ fullName?: string; date?: string; position?: string }>;
+        guarantors: Array<{ fullName?: string; address?: string; phone?: string }>;
       }
     ) => {
       // Load template (try common names)
@@ -258,7 +284,7 @@ const ContractPage: React.FC = () => {
         const baseY = field.y + yShift;
         const adjustedX = baseX + offsets.x;
         const adjustedY = baseY + offsets.y;
-        if (field.clearWidth && field.clearHeight) {
+        if (field.clearWidth && field.clearHeight && !showOverlay) {
           clearArea(doc, {
             page,
             x: baseX + (field.clearOffsetX ?? 0) + offsets.x,
@@ -318,6 +344,28 @@ const ContractPage: React.FC = () => {
         data.lessee?.abn,
         { extraOverrides: toOverrides(LESSEE_REPEAT_PAGES.abn) }
       );
+      // Page-specific overrides (e.g., page 4 Guarantee & Indemnity)
+      if (F.lesseePage4) {
+        await writeIfPresent(F.lesseePage4.entityName, data.lessee?.entityName);
+        await writeIfPresent(F.lesseePage4.installationAddress, data.lessee?.installationAddress);
+        await writeIfPresent(F.lesseePage4.phone, data.lessee?.phone);
+        await writeIfPresent(F.lesseePage4.email, data.lessee?.email);
+        await writeIfPresent(F.lesseePage4.abn, data.lessee?.abn);
+      }
+      if (F.lesseePage5) {
+        await writeIfPresent(F.lesseePage5.entityName, data.lessee?.entityName);
+        await writeIfPresent(F.lesseePage5.installationAddress, data.lessee?.installationAddress);
+        await writeIfPresent(F.lesseePage5.phone, data.lessee?.phone);
+        await writeIfPresent(F.lesseePage5.email, data.lessee?.email);
+        await writeIfPresent(F.lesseePage5.abn, data.lessee?.abn);
+      }
+      if (F.lesseePage7) {
+        await writeIfPresent(F.lesseePage7.entityName, data.lessee?.entityName);
+        await writeIfPresent(F.lesseePage7.installationAddress, data.lessee?.installationAddress);
+        await writeIfPresent(F.lesseePage7.phone, data.lessee?.phone);
+        await writeIfPresent(F.lesseePage7.email, data.lessee?.email);
+        await writeIfPresent(F.lesseePage7.abn, data.lessee?.abn);
+      }
 
       // Supplier
       await writeIfPresent(F.supplier?.name, data.supplier?.supplierName);
@@ -344,7 +392,7 @@ const ContractPage: React.FC = () => {
           const item = equipmentList[i];
           if (!item) continue;
           const description =
-            item.description || item.asset || item.category || "";
+            item.category || item.description || item.asset || "";
           await writeIfPresent(descField, description);
           await writeIfPresent(
             qtyField,
@@ -361,43 +409,30 @@ const ContractPage: React.FC = () => {
       );
       await writeIfPresent(F.finance?.term, data.finance?.term);
 
-      if (Array.isArray(F.directors) && F.directors.length) {
-        const directors = Array.isArray(data.directors) ? data.directors : [];
-        const dirCount = Math.min(directors.length, F.directors.length);
-        for (let i = 0; i < dirCount; i += 1) {
-          const fieldSet = F.directors[i];
-          const director = directors[i];
-          if (!director) continue;
-          const baseOverride = { yShift: DIRECTOR_BASE_Y_SHIFT };
-          await writeIfPresent(fieldSet.name, director.fullName || "", {
-            baseOverride,
-          });
-          await writeIfPresent(
-            fieldSet.position,
-            director.position || "Director",
-            { baseOverride }
-          );
-          await writeIfPresent(fieldSet.date, director.date || "", {
-            baseOverride,
-          });
+      // Equipment schedule on page 8 (index 7)
+      if (Array.isArray(F.scheduleCategories) && F.scheduleCategories.length) {
+        const equipmentList = Array.isArray(data.equipmentItems) ? data.equipmentItems : [];
+        const count = Math.min(equipmentList.length, F.scheduleCategories.length);
+        for (let i = 0; i < count; i += 1) {
+          const item = equipmentList[i];
+          if (!item) continue;
+          await writeIfPresent(F.scheduleCategories[i], item.category || "");
+          await writeIfPresent(F.scheduleQuantities?.[i], item.quantity ?? item.qty ?? "");
+          await writeIfPresent(F.scheduleManufacturers?.[i], item.manufacturer || item.otherManufacturer || "");
+          await writeIfPresent(F.scheduleModels?.[i], item.model || item.description || item.asset || "");
+          await writeIfPresent(F.scheduleSerials?.[i], item.serial || item.serialNumber || "");
         }
       }
-      if (Array.isArray(F.equipmentDescriptions) && F.equipmentDescriptions.length) {
-        const equipmentList = Array.isArray(data.equipmentItems) ? data.equipmentItems : [];
-        const count = Math.min(equipmentList.length, F.equipmentDescriptions.length);
+      // Guarantors on Guarantee & Indemnity page
+      if (Array.isArray(F.guarantors) && F.guarantors.length) {
+        const guarantors = Array.isArray(data.guarantors) ? data.guarantors : [];
+        const count = Math.min(guarantors.length, F.guarantors.length);
         for (let i = 0; i < count; i += 1) {
-          const field = F.equipmentDescriptions[i];
-          const item = equipmentList[i];
-          if (!field || !item) continue;
-          const details = [item.asset, item.description, item.category]
-            .filter(Boolean)
-            .join(" ");
-          await writeField(field, details);
-          const qtyField = F.equipmentQuantities?.[i];
-          if (qtyField) {
-            const qtyValue = item.quantity ?? item.qty ?? "";
-            await writeField(qtyField, qtyValue ? String(qtyValue) : "");
-          }
+          const g = guarantors[i];
+          if (!g) continue;
+          await writeIfPresent(F.guarantors[i].name, g.fullName || g.name || "");
+          await writeIfPresent(F.guarantors[i].address, g.address || "");
+          await writeIfPresent(F.guarantors[i].phone, g.phone || g.mobile || "");
         }
       }
 
@@ -420,7 +455,6 @@ const ContractPage: React.FC = () => {
         fontSize?: number;
       };
       const overlayColor = rgb(0.04, 0.45, 0.95);
-      const overlayFill = rgb(0.69, 0.83, 1);
       const highlightField = async (field: FieldDef | undefined, label: string) => {
         if (!field) return;
         const width = field.clearWidth ?? 140;
@@ -439,17 +473,9 @@ const ContractPage: React.FC = () => {
           y,
           width,
           height,
-          borderColor: overlayColor,
-          borderWidth: 0.8,
-          color: overlayFill,
-          opacity: 0.2,
-        });
-        await drawText(doc, {
-          page: field.page,
-          x,
-          y: y + height + 4,
-          text: label,
-          fontSize: 6,
+          borderColor: rgb(0.8, 0.8, 0.8), // light grey outline
+          borderWidth: 0.6,
+          // transparent background; only outline
         });
       };
       const overlays: Array<Promise<void>> = [];
@@ -468,18 +494,34 @@ const ContractPage: React.FC = () => {
       pushField(F.supplier?.phone, "supplier.phone");
       pushField(F.supplier?.email, "supplier.email");
       F.equipmentDescriptions?.forEach((field, idx) =>
-        pushField(field, `equipment[${idx}].description`)
+        pushField(field, `equipment_${idx + 1}_category`)
       );
       F.equipmentQuantities?.forEach((field, idx) =>
-        pushField(field, `equipment[${idx}].qty`)
+        pushField(field, `equipment_${idx + 1}_quantity`)
       );
       pushField(F.finance?.monthlyPayment, "finance.monthlyPayment");
       pushField(F.finance?.term, "finance.term");
+      F.scheduleCategories?.forEach((f, idx) => pushField(f, `equipment_${idx + 1}_category_pg8`));
+      F.scheduleQuantities?.forEach((f, idx) => pushField(f, `equipment_${idx + 1}_quantity_pg8`));
+      F.scheduleManufacturers?.forEach((f, idx) => pushField(f, `equipment_${idx + 1}_manufacturer_pg8`));
+      F.scheduleModels?.forEach((f, idx) => pushField(f, `equipment_${idx + 1}_model_pg8`));
+      F.scheduleSerials?.forEach((f, idx) => pushField(f, `equipment_${idx + 1}_serial_pg8`));
       F.directors?.forEach((set, idx) => {
         pushField(set.name, `director[${idx}].name`);
         pushField(set.position, `director[${idx}].position`);
         pushField(set.date, `director[${idx}].date`);
       });
+      F.guarantors?.forEach((set, idx) => {
+        pushField(set.name, `guarantor_${idx + 1}_name`);
+        pushField(set.address, `guarantor_${idx + 1}_address`);
+        pushField(set.phone, `guarantor_${idx + 1}_phone`);
+      });
+      // Guarantee & Indemnity page overlay helpers
+      pushField(F.lesseePage4?.entityName, "lessee_business_name_pg5");
+      pushField(F.lesseePage4?.installationAddress, "lessee_address_pg5");
+      pushField(F.lesseePage4?.phone, "lessee_phone_pg5");
+      pushField(F.lesseePage4?.email, "lessee_email_pg5");
+      pushField(F.lesseePage4?.abn, "lessee_abn_pg5");
       await Promise.all(overlays);
     }
 
@@ -510,13 +552,15 @@ const ContractPage: React.FC = () => {
     const entityName =
       form.businessName || form.entity_name || form.entityName || "";
     const abnNumber = form.abnNumber || form.abn || form.abn_number || "";
-    const installationAddress = formatAddress([
-      form.streetAddress,
-      form.streetAddress2,
-      form.city,
-      form.state,
-      form.postcode,
-    ]);
+    const installationAddress =
+      form.installationAddress ||
+      formatAddress([
+        form.streetAddress,
+        form.streetAddress2,
+        form.city,
+        form.state,
+        form.postcode,
+      ]);
     const summaryAddress = form.businessAddress || installationAddress;
     const supplierAddress = formatAddress([
       form.supplierAddress,
@@ -546,18 +590,28 @@ const ContractPage: React.FC = () => {
       ? toAUD(monthlyPaymentValue)
       : "";
     const equipmentItems = Array.isArray(form.equipmentItems)
-      ? form.equipmentItems.map((item: any) => {
-          const rawQty =
-            item?.quantity !== undefined && item?.quantity !== null && item?.quantity !== ""
-              ? item?.quantity
-              : item?.qty;
-          return {
-            category: item?.category || "",
-            description: item?.description || item?.asset || "",
-            asset: item?.asset || "",
-            quantity: rawQty !== undefined && rawQty !== null ? String(rawQty) : "",
-          };
-        })
+      ? form.equipmentItems
+          .map((item: any) => {
+            const rawQty =
+              item?.quantity !== undefined && item?.quantity !== null && item?.quantity !== ""
+                ? item?.quantity
+                : item?.qty;
+            return {
+              category: item?.category || "",
+              description: item?.description || item?.asset || "",
+              asset: item?.asset || "",
+              quantity: rawQty !== undefined && rawQty !== null ? String(rawQty) : "",
+              manufacturer: item?.manufacturer,
+              serialNumber: item?.serialNumber || item?.serial || "",
+            };
+          })
+          .filter(
+            (it: any) =>
+              (it.category && it.category.trim()) ||
+              (it.description && it.description.trim()) ||
+              (it.asset && it.asset.trim()) ||
+              (it.quantity && String(it.quantity).trim())
+          )
       : [];
     const directors = (Array.isArray(form.directors) ? form.directors : [])
       .map((director: any) => {
@@ -576,6 +630,17 @@ const ContractPage: React.FC = () => {
         return { fullName, date, position };
       })
       .filter((d: any) => d.fullName || d.date);
+    const guarantors = (Array.isArray(form.guarantors) ? form.guarantors : []).map((g: any) => {
+      const fullName =
+        g?.fullName ||
+        g?.name ||
+        [g?.firstName, g?.lastName].filter(Boolean).join(" ").trim();
+      const address =
+        g?.address ||
+        formatAddress([g?.streetAddress, g?.city, g?.state, g?.postcode]);
+      const phone = g?.phone || g?.mobile || "";
+      return { fullName, address, phone };
+    });
     const financeAmountDisplay = financeAmountRaw
       ? toAUD(financeAmountRaw)
       : "";
@@ -616,6 +681,7 @@ const ContractPage: React.FC = () => {
           "",
       },
       directors,
+      guarantors,
     };
   }, [form]);
 
@@ -752,6 +818,7 @@ const ContractPage: React.FC = () => {
           <div><span className="font-semibold">ABN:</span> {display.abnNumber}</div>
           <div><span className="font-semibold">Address:</span> {display.businessAddress}</div>
           <div><span className="font-semibold">Finance Amount:</span> {display.financeAmount}</div>
+          <div><span className="font-semibold">Monthly Repayments:</span> {display.finance?.monthlyPayment || "—"}</div>
           <div><span className="font-semibold">Term:</span> {display.term}</div>
         </div>
 

@@ -148,6 +148,7 @@ const BusinessDetailsSection: React.FC<BusinessDetailsSectionProps> = ({
             <option value="Retail">Retail</option>
             <option value="Transport">Transport</option>
             <option value="Construction">Construction</option>
+            <option value="Industrial">Industrial</option>
             <option value="Other">Other</option>
           </select>
         </div>

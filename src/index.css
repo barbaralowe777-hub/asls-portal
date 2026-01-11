@@ -130,3 +130,44 @@
 .markdown-preview ol {
   @apply my-4 ml-6;
 }
+
+/* ASLS brand palette overrides */
+:root {
+  --asls-green: #39ff14;
+  --asls-green-hover: #2fd011;
+  --asls-green-muted: #d9f2e3;
+  --asls-gold-600: #b48a1e;
+}
+
+.bg-emerald-600 {
+  background-color: var(--asls-green) !important;
+}
+.hover\:bg-emerald-700:hover {
+  background-color: var(--asls-green-hover) !important;
+}
+.text-emerald-700,
+.text-emerald-800,
+.text-emerald-900 {
+  color: #0f3d1a !important;
+}
+.border-emerald-100 {
+  border-color: var(--asls-green-muted) !important;
+}
+.border-emerald-200 {
+  border-color: #c3e7d2 !important;
+}
+.bg-emerald-100 {
+  background-color: var(--asls-green-muted) !important;
+}
+.bg-emerald-50 {
+  background-color: #edf8f1 !important;
+}
+.text-amber-600 {
+  color: var(--asls-gold-600) !important;
+}
+.bg-amber-50 {
+  background-color: #fff7e6 !important;
+}
+.border-amber-100 {
+  border-color: #fde8c7 !important;
+}

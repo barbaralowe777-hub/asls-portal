@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import BusinessDetailsSection from "./forms/BusinessDetailsSection";
 import AddressDetailsSection from "./forms/AddressDetailsSection";
 import SupplierSection from "./forms/SupplierSection";
+import SupportingDocumentsSection from "./forms/SupportingDocumentsSection";
 import BrokerageSection from "./forms/BrokerageSection";
 import EquipmentDetailsSection from "./forms/EquipmentDetailsSection";
 import DirectorsSection, {
@@ -112,6 +113,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
   const [successId, setSuccessId] = useState<string | null>(null);
   const [vendorId, setVendorId] = useState<string | null>(null);
   const [agentId, setAgentId] = useState<string | null>(null);
+  const [agentCode, setAgentCode] = useState<string | null>(null);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [createdAppId, setCreatedAppId] = useState<string | null>(null);
   const [abnLoading, setAbnLoading] = useState(false);
@@ -122,6 +124,9 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
   const [vendorPrefillLoading, setVendorPrefillLoading] = useState(false);
   const [vendorPrefillError, setVendorPrefillError] = useState<string | null>(null);
   const [vendorPrefillLocked, setVendorPrefillLocked] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [vendorUuid, setVendorUuid] = useState<string | null>(null);
+  const [landlordWaiverInfo, setLandlordWaiverInfo] = useState<string | null>(null);
 
   const [files, setFiles] = useState({
     supportingDocs: [] as Array<{ file: File; type?: string; name?: string }>,
@@ -133,6 +138,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
   const clearVendorPrefillFields = useCallback(() => {
     setVendorPrefillLocked(false);
     setVendorPrefillError(null);
+    setVendorUuid(null);
     setFormData((prev) => ({
       ...prev,
       vendorName: "",
@@ -164,7 +170,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
       try {
         const { data, error } = await supabase
           .from("vendors")
-          .select("vendor_code,name,contact_name,contact_email,abn,metadata,vendor_address,vendor_phone")
+          .select("id,vendor_code,name,contact_name,contact_email,abn,metadata,vendor_address,vendor_phone")
           .eq("vendor_code", normalized)
           .maybeSingle();
         if (error) throw error;
@@ -180,6 +186,7 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
           addressParts.street ||
           metadata.address ||
           "";
+        setVendorUuid((data as any)?.id || null);
         setFormData((prev) => ({
           ...prev,
           vendorId: data.vendor_code || normalized,
@@ -226,16 +233,10 @@ const ApplicationForm: React.FC<ApplicationFormProps> = ({ onBack, onSubmit }) =
     [fetchVendorDetails, clearVendorPrefillFields]
   );
 
-const [equipmentItems, setEquipmentItems] = useState([
-  {
-    category: "",
-    asset: "",
-    quantity: "",
-      unitPrice: "",
-      manufacturer: "",
-      serialNumber: "As per Dealer Invoice/Annexure",
-      description: "",
-    },
+  const [equipmentItems, setEquipmentItems] = useState([
+    { category: "Solar Panels", include: true, asset: "", quantity: "", manufacturer: "", serialNumber: "As Per Invoice/PO", description: "", otherManufacturer: "" },
+    { category: "Inverters", include: true, asset: "", quantity: "", manufacturer: "", serialNumber: "As Per Invoice/PO", description: "", otherManufacturer: "" },
+    { category: "Batteries", include: true, asset: "", quantity: "", manufacturer: "", serialNumber: "As Per Invoice/PO", description: "", otherManufacturer: "" },
   ]);
 
   const [formData, setFormData] = useState({
@@ -294,32 +295,80 @@ const [equipmentItems, setEquipmentItems] = useState([
   const directorAddressRefs = useRef<Array<HTMLInputElement | null>>([]);
   const vendorLookupTimeoutRef = useRef<number | null>(null);
 
-  const DOC_FEE = 385; // kept for info; not used in calc below
+  const parseAmount = (value: any) => {
+    if (value === null || value === undefined) return 0;
+    const num = Number(
+      typeof value === "string" ? value.replace(/[^0-9.-]/g, "") : value
+    );
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const BROKERAGE_MARGIN = 0.055; // 5.5% uplift
   const UPLIFT_INDUSTRIES = ["Beauty", "Gym", "Hospitality"]; // +1% uplift
-  const getBaseRate = (amount: number): number => {
-    if (amount <= 20000) return 11.9;
-    if (amount <= 35000) return 10.9;
-    if (amount <= 50000) return 9.9;
-    return 9.5;
+  const FACTOR_TABLE: Record<number, Array<{ min: number; max: number; factor: number }>> = {
+    84: [
+      { min: 0, max: 20000, factor: 1.743 },
+      { min: 20000.01, max: 35000, factor: 1.692 },
+      { min: 35000.01, max: 50000, factor: 1.641 },
+      { min: 50000.01, max: 1000000, factor: 1.622 },
+    ],
+    72: [
+      { min: 0, max: 20000, factor: 1.931 },
+      { min: 20000.01, max: 35000, factor: 1.881 },
+      { min: 35000.01, max: 50000, factor: 1.832 },
+      { min: 50000.01, max: 1000000, factor: 1.813 },
+    ],
+    60: [
+      { min: 0, max: 20000, factor: 2.195 },
+      { min: 20000.01, max: 35000, factor: 2.15 },
+      { min: 35000.01, max: 50000, factor: 2.102 },
+      { min: 50000.01, max: 1000000, factor: 2.084 },
+    ],
+    48: [
+      { min: 0, max: 20000, factor: 2.603 },
+      { min: 20000.01, max: 35000, factor: 2.556 },
+      { min: 35000.01, max: 50000, factor: 2.511 },
+      { min: 50000.01, max: 1000000, factor: 2.493 },
+    ],
+    36: [
+      { min: 0, max: 20000, factor: 3.284 },
+      { min: 20000.01, max: 35000, factor: 3.24 },
+      { min: 35000.01, max: 50000, factor: 3.196 },
+      { min: 50000.01, max: 1000000, factor: 3.178 },
+    ],
+    24: [
+      { min: 0, max: 20000, factor: 4.657 },
+      { min: 20000.01, max: 35000, factor: 4.614 },
+      { min: 35000.01, max: 50000, factor: 4.572 },
+      { min: 50000.01, max: 1000000, factor: 4.555 },
+    ],
+  };
+  const getFactor = (amount: number, months: number): number | null => {
+    const rows = FACTOR_TABLE[months];
+    if (!rows) return null;
+    const tier = rows.find((row) => amount >= row.min && amount <= row.max);
+    return tier ? tier.factor : null;
   };
   const recalcRepayment = (amountStr?: string, termStr?: string, industryStr?: string) => {
-    const amountSource = (amountStr ?? formData.financeAmount ?? "0");
-    const amount = parseFloat(String(amountSource)) || 0;
-    const monthsSource = (termStr ?? formData.term ?? "0");
-    const months = parseInt(String(monthsSource), 10) || 0;
+    const amount = parseAmount(amountStr ?? formData.financeAmount ?? "0");
+    const months = parseInt(String(termStr ?? formData.term ?? "0"), 10) || 0;
     const industry = (industryStr ?? repaymentIndustry) ?? "General";
     if (!amount || !months) { setMonthlyRepayment(null); return; }
-    let rate = getBaseRate(amount);
-    if (UPLIFT_INDUSTRIES.includes(industry)) rate += 1;
-    const monthlyRate = rate / 100 / 12;
-    const monthly = (amount * monthlyRate * Math.pow(1 + monthlyRate, months)) / (Math.pow(1 + monthlyRate, months) - 1);
+    const factor = getFactor(amount, months);
+    if (!factor) { setMonthlyRepayment(null); return; }
+    const upliftMultiplier =
+      1 +
+      (UPLIFT_INDUSTRIES.includes(industry) ? 0.01 : 0) +
+      (formData.abnUnder2Years ? 0.01 : 0);
+    const adjustedFactor = factor * upliftMultiplier;
+    const monthly = (adjustedFactor / 100) * amount * (1 + BROKERAGE_MARGIN);
     setMonthlyRepayment(monthly);
   };
 
   useEffect(() => {
     recalcRepayment();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.financeAmount, formData.term, repaymentIndustry]);
+  }, [formData.financeAmount, formData.term, repaymentIndustry, formData.abnUnder2Years]);
 
   const abnDebounceRef = useRef<number | null>(null);
   const supplierAbnDebounceRef = useRef<number | null>(null);
@@ -335,6 +384,7 @@ const [equipmentItems, setEquipmentItems] = useState([
       retail: "Retail",
       transport: "Transport",
       construction: "Construction",
+      industrial: "Industrial",
     };
     for (const key of Object.keys(map)) {
       if (t.includes(key)) { setRepaymentIndustry(map[key]); recalcRepayment(); return; }
@@ -350,23 +400,83 @@ const [equipmentItems, setEquipmentItems] = useState([
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
-        setAgentId(session.user.id);
+
         const { data: profile } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', session.user.id)
           .single();
+
+        const profileRole = (profile as any)?.role || (session.user.user_metadata as any)?.role || null;
+        setProfileRole(profileRole);
+
         const profileVendorId =
           (profile as any)?.vendor_id || (profile as any)?.vendorId || null;
         const profileAgentCode =
           (profile as any)?.agent_code ||
           (profile as any)?.agentCode ||
           (profile as any)?.agent_id ||
-          session.user.user_metadata?.agent_code ||
+          (session.user.user_metadata as any)?.agent_code ||
           null;
+        const profileFirstName =
+          (profile as any)?.first_name ||
+          (profile as any)?.firstName ||
+          (session.user.user_metadata as any)?.first_name ||
+          (session.user.user_metadata as any)?.firstName ||
+          "";
+        const profileLastName =
+          (profile as any)?.last_name ||
+          (profile as any)?.lastName ||
+          (session.user.user_metadata as any)?.last_name ||
+          (session.user.user_metadata as any)?.lastName ||
+          "";
+
+        // Decide agentId based on role
+        // Always remember agent code for emails; stamp agent_id with Supabase user id for agents
+        setAgentCode(profileAgentCode || null);
+        if (profileRole === 'agent') {
+          setAgentId(session.user.id);
+        } else {
+          // vendors/admins won't be filtered by agent dashboards
+          setAgentId(null);
+        }
+
+        // Seed vendor details from profile if available
+        setFormData((prev) => ({
+          ...prev,
+          agentFirstName: prev.agentFirstName || profileFirstName,
+          agentLastName: prev.agentLastName || profileLastName,
+          vendorId: prev.vendorId || (profileVendorId ? normalizeVendorCode(profileVendorId) : ""),
+          vendorName: prev.vendorName || (profile as any)?.vendor_name || (profile as any)?.vendorName || prev.vendorName,
+          supplierBusinessName:
+            prev.supplierBusinessName ||
+            (profile as any)?.vendor_name ||
+            (profile as any)?.vendorName ||
+            prev.supplierBusinessName,
+          supplierEmail:
+            prev.supplierEmail ||
+            (profile as any)?.vendor_email ||
+            (profile as any)?.vendorEmail ||
+            "",
+          supplierPhone:
+            prev.supplierPhone ||
+            (profile as any)?.vendor_phone ||
+            (profile as any)?.vendorPhone ||
+            "",
+          supplierAbn:
+            prev.supplierAbn ||
+            (profile as any)?.vendor_abn ||
+            (profile as any)?.vendorAbn ||
+            "",
+          supplierAddress:
+            prev.supplierAddress ||
+            (profile as any)?.vendor_address ||
+            "",
+        }));
+
+        // Trigger vendor lookup if profile has a vendor id
         setVendorId(profileVendorId);
-        setAgentId(profileAgentCode || session.user.id);
-        setProfileRole((profile as any)?.role || null);
+        setVendorUuid(profileVendorId || null);
       } catch (e) {
         console.warn('Failed to load vendor_id', e);
       }
@@ -375,6 +485,8 @@ const [equipmentItems, setEquipmentItems] = useState([
 
   useEffect(() => {
     if (!vendorId || isDemoFlag) return;
+    // Only attempt lookup when it looks like a vendor code (e.g., V00123)
+    if (!/^v/i.test(vendorId)) return;
     const normalized = normalizeVendorCode(vendorId);
     setFormData((prev) => ({ ...prev, vendorId: normalized }));
     fetchVendorDetails(normalized);
@@ -508,7 +620,7 @@ const [equipmentItems, setEquipmentItems] = useState([
   const removeEquipmentItem = (index: number) => {
     setEquipmentItems((prev) => prev.filter((_, i) => i !== index));
   };
-  const updateEquipmentItem = (index: number, field: string, value: string) => {
+  const updateEquipmentItem = (index: number, field: string, value: any) => {
     setEquipmentItems((prev) => prev.map((it, i) => (i === index ? { ...it, [field]: value } : it)));
   };
 
@@ -674,6 +786,7 @@ const handleAbnLookup = async (rawAbn: string) => {
       body: [
         ["Vendor Name", formData.vendorName || ""],
         ["Vendor ID", formData.vendorId || ""],
+        ["Agent Code/ID", agentId || (formData as any)?.agentId || (formData as any)?.agentCode || ""],
         ["Agent First Name", formData.agentFirstName || ""],
         ["Agent Last Name", formData.agentLastName || ""],
         ["Supplier Accredited", formData.supplierAccredited || ""],
@@ -694,6 +807,58 @@ const handleAbnLookup = async (rawAbn: string) => {
       body: equipmentItems.map((it) => [it.category, it.asset, it.quantity, it.unitPrice, it.manufacturer, it.serialNumber, it.description]),
       styles: { fontSize: 9 },
     });
+
+    // Directors
+    const directorsForPdf = (directors && directors.length ? directors : (formData as any)?.directors || []) as any[];
+    const directorRows = directorsForPdf.filter((d) =>
+      [d.firstName, d.lastName, d.email, d.phone, d.licenceNumber, d.address, d.dob].some(Boolean)
+    ).map((d) => [
+      [d.title, d.firstName, d.lastName].filter(Boolean).join(" ").trim(),
+      d.email || "",
+      d.phone || "",
+      d.dob || "",
+      d.address || "",
+      d.licenceNumber || "",
+      d.licenceState || "",
+      d.licenceExpiry || "",
+      d.medicareNumber || "",
+      d.medicareExpiry || "",
+    ]);
+    if (directorRows.length) {
+      doc.text("Directors", 14, (doc as any).lastAutoTable.finalY + 10);
+      autoTable(doc, {
+        startY: (doc as any).lastAutoTable.finalY + 15,
+        head: [["Name", "Email", "Phone", "DOB", "Address", "Licence #", "State", "Expiry", "Medicare #", "Medicare Expiry"]],
+        body: directorRows,
+        styles: { fontSize: 8 },
+      });
+    }
+
+    // Guarantors (if not using directors as guarantors)
+    if (!directorsAreGuarantors) {
+      const guarantorsForPdf = (guarantors && guarantors.length ? guarantors : (formData as any)?.guarantors || []) as any[];
+      const guarantorRows = guarantorsForPdf.filter((g) =>
+        [g.firstName, g.lastName, g.email, g.phone, g.licenceNumber, g.address, g.dob].some(Boolean)
+      ).map((g) => [
+        [g.title, g.firstName, g.lastName].filter(Boolean).join(" ").trim(),
+        g.email || "",
+        g.phone || "",
+        g.dob || "",
+        g.address || "",
+        g.licenceNumber || "",
+        g.licenceState || "",
+        g.licenceExpiry || "",
+      ]);
+      if (guarantorRows.length) {
+        doc.text("Guarantors", 14, (doc as any).lastAutoTable.finalY + 10);
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY + 15,
+          head: [["Name", "Email", "Phone", "DOB", "Address", "Licence #", "State", "Expiry"]],
+          body: guarantorRows,
+          styles: { fontSize: 8 },
+        });
+      }
+    }
 
     // Brokerage & Term
     doc.text("Brokerage & Term", 14, (doc as any).lastAutoTable.finalY + 10);
@@ -730,10 +895,79 @@ const handleAbnLookup = async (rawAbn: string) => {
   const stripDirectorFiles = (list: DirectorInfo[]) =>
     list.map(({ licenceFrontFile, licenceBackFile, medicareFrontFile, ...rest }) => rest);
 
+  const buildFileFlags = (payload: any) => {
+    const flags: Record<string, boolean> = {};
+    const normalizeKey = (label: string) =>
+      String(label || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+    const mark = (key: string, present: any) => {
+      if (present) flags[normalizeKey(key)] = true;
+    };
+    // Directors
+    (payload.directors || []).forEach((d: any, idx: number) => {
+      const n = idx + 1;
+      mark(`director_${n}_licence_front`, d.licenceFrontUrl);
+      mark(`director_${n}_licence_back`, d.licenceBackUrl);
+      mark(`director_${n}_medicare_front`, d.medicareFrontUrl);
+    });
+    // Guarantors
+    (payload.guarantors || []).forEach((g: any, idx: number) => {
+      const n = idx + 1;
+      mark(`guarantor_${n}_licence_front`, g.licenceFrontUrl);
+      mark(`guarantor_${n}_licence_back`, g.licenceBackUrl);
+      mark(`guarantor_${n}_medicare_front`, g.medicareFrontUrl);
+    });
+    // Supporting docs keyed by type
+    if (payload.files && typeof payload.files === "object") {
+      Object.entries(payload.files).forEach(([k, v]) => {
+        if (v) flags[normalizeKey(k)] = true;
+      });
+    }
+    return flags;
+  };
+
+  const computeMissingDocs = (payload: any, flags: Record<string, boolean>) => {
+    const tasks: string[] = [];
+    const has = (key: string) => !!flags[key];
+    const directorsList = payload.directors || [];
+    const guarantorsList = payload.guarantors || [];
+
+    directorsList.forEach((_: any, idx: number) => {
+      const n = idx + 1;
+      if (!has(`director_${n}_licence_front`)) tasks.push(`Upload Director ${n} licence (front)`);
+      if (!has(`director_${n}_licence_back`)) tasks.push(`Upload Director ${n} licence (back)`);
+      if (!has(`director_${n}_medicare_front`)) tasks.push(`Upload Director ${n} Medicare (front)`);
+    });
+
+    guarantorsList.forEach((_: any, idx: number) => {
+      const n = idx + 1;
+      if (!has(`guarantor_${n}_licence_front`)) tasks.push(`Upload Guarantor ${n} licence (front)`);
+      if (!has(`guarantor_${n}_licence_back`)) tasks.push(`Upload Guarantor ${n} licence (back)`);
+      if (!has(`guarantor_${n}_medicare_front`)) tasks.push(`Upload Guarantor ${n} Medicare (front)`);
+    });
+
+    if ((payload.premisesType || "").toLowerCase() === "rented") {
+      if (!has("lease_agreement")) tasks.push("Upload Lease Agreement");
+      if (!has("landlord_waiver")) tasks.push("Upload Landlord Waiver");
+    }
+    if ((payload.premisesType || "").toLowerCase() === "owned") {
+      if (!has("rates_notice")) tasks.push("Upload Rates Notice");
+    }
+    if ((payload.entityType || "").toLowerCase() === "trust") {
+      if (!has("trust_deed")) tasks.push("Upload Trust Deed");
+    }
+    const invoiceKey = "invoice_solar_supplier_vendor";
+    if (!has(invoiceKey)) tasks.push("Upload invoice from solar supplier/vendor");
+    return tasks;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const isDemo = isDemoFlag;
     setLoading(true);
+    setSubmitError(null);
     const referenceNumber = `APP-${Date.now()}`;
     const total = equipmentItems.reduce(
       (sum, it) =>
@@ -787,9 +1021,22 @@ const handleAbnLookup = async (rawAbn: string) => {
         return supabase.storage.from("uploads").getPublicUrl(path).data.publicUrl;
       };
       const links: string[] = [];
+      const fileFlags: Record<string, boolean> = {};
+      const normalizeKey = (label: string) =>
+        String(label || "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "");
+      const markFlag = (key: string, present: any) => {
+        if (present) fileFlags[key] = true;
+      };
       for (const d of files.supportingDocs) {
         const url = await uploadOne(`support_${d.type || "doc"}`, d.file);
         if (url) links.push(`${d.type || "Doc"}: ${url}`);
+        if (url && d.type) {
+          const normalizedKey = normalizeKey(d.type);
+          markFlag(normalizedKey, true);
+        }
       }
 
       const directorsWithUploads = await Promise.all(
@@ -804,6 +1051,7 @@ const handleAbnLookup = async (rawAbn: string) => {
           if (frontUrl) {
             uploads.licenceFrontUrl = frontUrl;
             links.push(`Director ${idx + 1} Licence Front: ${frontUrl}`);
+            markFlag(`${prefix}_licence_front`, true);
           }
           const backUrl = await uploadOne(
             `${prefix}_licence_back`,
@@ -812,6 +1060,7 @@ const handleAbnLookup = async (rawAbn: string) => {
           if (backUrl) {
             uploads.licenceBackUrl = backUrl;
             links.push(`Director ${idx + 1} Licence Back: ${backUrl}`);
+            markFlag(`${prefix}_licence_back`, true);
           }
           const medFrontUrl = await uploadOne(
             `${prefix}_medicare_front`,
@@ -820,6 +1069,43 @@ const handleAbnLookup = async (rawAbn: string) => {
           if (medFrontUrl) {
             uploads.medicareFrontUrl = medFrontUrl;
             links.push(`Director ${idx + 1} Medicare: ${medFrontUrl}`);
+            markFlag(`${prefix}_medicare_front`, true);
+          }
+          return { ...rest, ...uploads };
+        })
+      );
+
+      const guarantorsWithUploads = await Promise.all(
+        guarantors.map(async (g, idx) => {
+          const { licenceFrontFile, licenceBackFile, medicareFrontFile, ...rest } = g;
+          const uploads: Partial<GuarantorInfo> = {};
+          const prefix = `guarantor_${idx + 1}`;
+          const frontUrl = await uploadOne(
+            `${prefix}_licence_front`,
+            licenceFrontFile || null
+          );
+          if (frontUrl) {
+            uploads.licenceFrontUrl = frontUrl;
+            links.push(`Guarantor ${idx + 1} Licence Front: ${frontUrl}`);
+            markFlag(`${prefix}_licence_front`, true);
+          }
+          const backUrl = await uploadOne(
+            `${prefix}_licence_back`,
+            licenceBackFile || null
+          );
+          if (backUrl) {
+            uploads.licenceBackUrl = backUrl;
+            links.push(`Guarantor ${idx + 1} Licence Back: ${backUrl}`);
+            markFlag(`${prefix}_licence_back`, true);
+          }
+          const medFrontUrl = await uploadOne(
+            `${prefix}_medicare_front`,
+            medicareFrontFile || null
+          );
+          if (medFrontUrl) {
+            uploads.medicareFrontUrl = medFrontUrl;
+            links.push(`Guarantor ${idx + 1} Medicare: ${medFrontUrl}`);
+            markFlag(`${prefix}_medicare_front`, true);
           }
           return { ...rest, ...uploads };
         })
@@ -828,30 +1114,121 @@ const handleAbnLookup = async (rawAbn: string) => {
       payload = {
         ...payload,
         directors: directorsWithUploads,
+        guarantors: guarantorsWithUploads,
+        agentId,
+        agentCode,
+        vendorUuid,
+        pdfUrl,
       };
 
-      // 3. Persist minimal record for dashboard (best-effort) with vendor_id from profile
+      // Build flags + missing docs/tasks to drive status
+      const fileFlagsFromUploads = { ...fileFlags };
+      payload.files = fileFlagsFromUploads;
+      const missingDocs = computeMissingDocs(payload, buildFileFlags(payload));
+
+      // Quick completeness check: core fields + equipment + supplier + no missing docs => under_review
+      const isCompleteCore =
+        !!(formData.entityName || formData.abnNumber) &&
+        !!formData.email &&
+        !!formData.phone &&
+        !!formData.streetAddress &&
+        !!(formData.invoiceAmount || formData.financeAmount) &&
+        !!formData.term &&
+        !!formData.supplierBusinessName &&
+        !!formData.supplierAddress &&
+        equipmentItems.length > 0 &&
+        !!(equipmentItems[0].category || equipmentItems[0].description) &&
+        !!(equipmentItems[0].quantity || equipmentItems[0].qty);
+      const applicationStatus = isCompleteCore && missingDocs.length === 0 ? "under_review" : "submitted";
+      payload.missingTasks = missingDocs;
+
+      // 2b. If rented premises, send landlord waiver
+      if ((payload.premisesType || "").toLowerCase() === "rented") {
+        const director1 = directors[0] || {};
+        const directorEmail =
+          (director1 as any).email ||
+          (director1 as any).directorEmail ||
+          (payload as any).directorEmail ||
+          formData.email;
+        const directorName = [
+          (director1 as any).firstName,
+          (director1 as any).lastName,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        if (directorEmail) {
+          try {
+            await supabase.functions.invoke("landlord-waiver", {
+              body: {
+                applicationId: referenceNumber,
+                directorEmail,
+                directorName,
+              },
+            });
+            const sentAt = new Date().toISOString();
+            payload.landlordWaiverSentAt = sentAt;
+            payload.landlordWaiverSentTo = directorEmail;
+            setLandlordWaiverInfo(`Landlord waiver sent to ${directorEmail}`);
+          } catch (err: any) {
+            console.warn("Landlord waiver send failed", err);
+            payload.landlordWaiverError = err?.message || "Failed to send landlord waiver";
+          }
+        }
+      }
+
+      // 3. Persist minimal record for dashboards with vendor_id/agent_id
       try {
-        await supabase.from('application_forms').insert([
+        await supabase.from('application_forms').upsert([
           {
             id: referenceNumber,
-            status: 'submitted',
+            status: applicationStatus,
             data: payload,
           },
         ]);
+        // Also upsert into applications so dashboards can see the submission
+        await supabase.from("applications").upsert([
+          {
+            id: referenceNumber,
+            status: applicationStatus,
+            entity_name: formData.entityName || formData.businessName || formData.companyName,
+            finance_amount: formData.financeAmount || payload.financeAmount || 0,
+            vendor_name: formData.vendorName || payload.vendorName || "",
+            vendor_id: vendorUuid || formData.vendorId || payload.vendorId || null,
+            agent_id: agentId || null,
+            agent_name: [formData.agentFirstName, formData.agentLastName].filter(Boolean).join(" ").trim(),
+            pdf_url: pdfUrl || null,
+            data: payload,
+          },
+        ], { onConflict: "id" });
       } catch (e) {
         console.warn('Applications insert failed (ensure applications table & RLS).', e);
       }
 
       // 4. Email admins
       const subject = `ASLS Application ${referenceNumber} - ${formData.entityName || formData.abnNumber}`;
-      const html = `
-        <h2>New Application Submitted</h2>
-        <p><strong>Application ID:</strong> ${referenceNumber}</p>
-        <p><strong>Business:</strong> ${formData.entityName || ""}</p>
-        <p><strong>ABN:</strong> ${formData.abnNumber || ""}</p>
-        <p><a href="${pdfUrl}" target="_blank">View PDF Summary</a></p>
-        ${links.length ? `<p><strong>Uploaded Files:</strong><br>${links.map((l) => `<div>${l}</div>`).join("")}</p>` : ""}
+      const adminSummaryHtml = `
+        <div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937;background:#f8fafc;padding:20px;">
+          <div style="max-width:640px;margin:auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.06);overflow:hidden;">
+            <div style="background:#0ac432;padding:16px 20px;text-align:center;">
+              <img src="https://portal.asls.net.au/ASLS-logo.png" alt="ASLS" style="max-height:52px" />
+            </div>
+            <div style="padding:22px;">
+              <h2 style="margin:0 0 10px;font-size:20px;color:#111827;">New Application Submitted</h2>
+              <p style="margin:0 0 8px;font-weight:600;">Application ID: <span style="font-weight:700;color:#0f172a;">${referenceNumber}</span></p>
+              <p style="margin:0 0 6px;">Business: <strong>${formData.entityName || "N/A"}</strong></p>
+              <p style="margin:0 0 6px;">ABN: <strong>${formData.abnNumber || "N/A"}</strong></p>
+              <p style="margin:12px 0;"><a href="${pdfUrl}" style="background:#0ac432;color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none;font-weight:700;display:inline-block;">View Branded PDF Summary</a></p>
+              ${
+                links.length
+                  ? `<div style="margin-top:10px;"><div style="font-weight:600;margin-bottom:4px;">Uploaded Files:</div>${links
+                      .map((l) => `<div style="font-size:13px;">${l}</div>`)
+                      .join("")}</div>`
+                  : ""
+              }
+            </div>
+          </div>
+        </div>
       `;
       await fetch("https://ktdxqyhklnsahjsgrhud.supabase.co/functions/v1/send-email", {
         method: "POST",
@@ -859,7 +1236,12 @@ const handleAbnLookup = async (rawAbn: string) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ to: ["john@asls.net.au", "admin@asls.net.au"], subject, text: `PDF: ${pdfUrl}`, html }),
+        body: JSON.stringify({
+          to: ["john@asls.net.au", "admin@asls.net.au"],
+          subject,
+          text: `PDF summary: ${pdfUrl}`,
+          html: adminSummaryHtml,
+        }),
       });
 
       // Success UI + Conditional approval modal
@@ -874,6 +1256,7 @@ const handleAbnLookup = async (rawAbn: string) => {
       }
     } catch (err) {
       console.error("Submit failed", err);
+      setSubmitError((err as any)?.message || "Something went wrong submitting. Please try again.");
       onSubmit?.();
     } finally {
       setLoading(false);
@@ -885,11 +1268,14 @@ const handleAbnLookup = async (rawAbn: string) => {
     const params = new URLSearchParams(window.location.search);
     const demoMode =
       params.get("demo") === "1" || import.meta.env.VITE_DEMO_NO_BACKEND === "1";
+    const nextParams = new URLSearchParams();
+    if (demoMode) nextParams.set("demo", "1");
+    // Always show overlay so user can see every prefilled field before sending.
+    nextParams.set("overlay", "1");
     setDocuSignError(null);
     setDocuSignLoading(true);
     try {
-      const suffix = demoMode ? "?demo=1" : "";
-      navigate(`/contract/${createdAppId}${suffix}`);
+      navigate(`/contract/${createdAppId}?${nextParams.toString()}`);
     } catch (err: any) {
       console.error("Navigation failed", err);
       setDocuSignError(err?.message || "Unable to open contract page.");
@@ -970,6 +1356,9 @@ const handleAbnLookup = async (rawAbn: string) => {
             <div>
               <p className="font-semibold">Application Submitted Successfully</p>
               <p className="text-sm">Your Application ID is <span className="font-mono font-bold">{successId}</span>. Keep this for your records.</p>
+              {landlordWaiverInfo && (
+                <p className="text-sm mt-1 text-green-700">{landlordWaiverInfo}</p>
+              )}
             </div>
             <button
               type="button"
@@ -1027,6 +1416,10 @@ const handleAbnLookup = async (rawAbn: string) => {
             selectAddress={() => {}}
             handleAddressVerify={() => {}}
           />
+          <SupportingDocumentsSection
+            files={files}
+            handleFileChange={handleFileChange}
+          />
           <SupplierSection
             formData={formData}
             handleChange={handleChange}
@@ -1039,13 +1432,9 @@ const handleAbnLookup = async (rawAbn: string) => {
           <BrokerageSection
             formData={formData}
             handleChange={handleChange}
-            files={files}
-            handleFileChange={handleFileChange}
           />
           <EquipmentDetailsSection
             equipmentItems={equipmentItems}
-            addEquipmentItem={addEquipmentItem}
-            removeEquipmentItem={removeEquipmentItem}
             updateEquipmentItem={updateEquipmentItem}
           />
 
@@ -1080,6 +1469,7 @@ const handleAbnLookup = async (rawAbn: string) => {
                 <option value="Retail">Retail</option>
                 <option value="Transport">Transport</option>
                 <option value="Construction">Construction</option>
+                <option value="Industrial">Industrial</option>
                 <option value="Other">Other</option>
               </select>
             </div>
@@ -1093,6 +1483,11 @@ const handleAbnLookup = async (rawAbn: string) => {
             >
               Cancel
             </button>
+            {submitError && (
+              <div className="flex-1 text-sm text-red-600 text-right pr-2 self-center">
+                {submitError}
+              </div>
+            )}
             <button
               type="submit"
               disabled={loading}

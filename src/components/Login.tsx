@@ -4,9 +4,10 @@ import { supabase } from '@/lib/supabase';
 interface LoginProps {
   onLoginSuccess: (role: string) => void;
   onSwitchToSignup: () => void;
+  onForgotPassword: () => void;
 }
 
-const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToSignup }) => {
+const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToSignup, onForgotPassword }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -78,6 +79,13 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToSignup }) => {
               required
               className="w-full px-4 py-2 border rounded-lg focus:ring-[#1dad21] focus:border-[#1dad21]"
             />
+            <button
+              type="button"
+              onClick={onForgotPassword}
+              className="text-sm text-[#1dad21] hover:underline mt-2"
+            >
+              Forgot password?
+            </button>
           </div>
 
           <button
